@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Emotion Classification System</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<main class="container container-custom py-4">
+    <header class="hero mb-4">
+        <h1 class="hero-title">Emotion Classification Studio</h1>
+        <p class="hero-subtitle">CNN + BiLSTM + Attention with single and batch analysis</p>
+    </header>
+
+    {% if error_message %}
+    <div class="alert alert-danger" role="alert">{{ error_message }}</div>
+    {% endif %}
+    {% if info_message %}
+    <div class="alert alert-success" role="alert">{{ info_message }}</div>
+    {% endif %}
+    {% if language_warning %}
+    <div class="alert alert-warning" role="alert">{{ language_warning }}</div>
+    {% endif %}
+
+    <section class="card card-custom mb-4" aria-label="Single input analysis">
+        <h2 class="section-title">Analyze One Review</h2>
+        <form method="POST" id="emotionForm" novalidate>
+            <input type="hidden" name="mode" value="single">
+
+            <label class="form-label fw-semibold" for="contextSelect">Context</label>
+            <select id="contextSelect" name="context" class="form-select mb-3" aria-label="Choose text context">
+                <option value="general" {% if context == "general" %}selected{% endif %}>General text</option>
+                <option value="product_review" {% if context == "product_review" %}selected{% endif %}>Product review</option>
+                <option value="social_media" {% if context == "social_media" %}selected{% endif %}>Social media post</option>
+                <option value="support_ticket" {% if context == "support_ticket" %}selected{% endif %}>Support ticket</option>
+            </select>
+
+            <label class="form-label fw-semibold" for="textInput">Text Input</label>
+            <textarea id="textInput"
+                      name="text"
+                      class="form-control form-control-lg"
+                      rows="5"
+                      maxlength="{{ max_chars }}"
+                      aria-label="Text to analyze"
+                      placeholder="Enter a review or short message...">{{ text }}</textarea>
+            <div class="helper-row">
+                <div id="typingFeedback" class="helper-text">Best results with {{ suggestion_min }}-{{ suggestion_max }} characters.</div>
+                <div class="char-count"><span id="charCount">0</span>/{{ max_chars }}</div>
+            </div>
+
+            <div class="examples-section">
+                <div class="examples-title">Examples</div>
+                <div class="example-row">
+                    <button type="button" class="example-btn" data-example="I just got promoted! So excited!">Use Joy</button>
+                    <button type="button" class="copy-example-btn" data-copy="I just got promoted! So excited!">Copy</button>
+                </div>
+                <div class="example-row">
+                    <button type="button" class="example-btn" data-example="This is absolutely horrible and unacceptable.">Use Anger</button>
+                    <button type="button" class="copy-example-btn" data-copy="This is absolutely horrible and unacceptable.">Copy</button>
+                </div>
+                <div class="example-row">
+                    <button type="button" class="example-btn" data-example="I feel sad and heartbroken after this outcome.">Use Sadness</button>
+                    <button type="button" class="copy-example-btn" data-copy="I feel sad and heartbroken after this outcome.">Copy</button>
+                </div>
+            </div>
+
+            <div class="d-flex flex-wrap gap-2 mt-3">
+                <button type="submit" class="btn btn-primary flex-grow-1" id="analyzeBtn" aria-live="polite">
+                    <span id="btnText">Analyze Emotion</span>
+                    <span class="spinner" id="spinner" aria-hidden="true"></span>
+                </button>
+                <button type="button" class="btn btn-outline-secondary" id="clearBtn">Clear</button>
+            </div>
+            <div id="analyzingStatus" class="status-line" role="status" aria-live="polite"></div>
+        </form>
+    </section>
+
+    <section class="card card-custom mb-4" aria-label="Batch analysis">
+        <h2 class="section-title">Batch Analysis</h2>
+        <form method="POST" enctype="multipart/form-data" id="batchForm">
+            <input type="hidden" name="mode" value="batch">
+            <label for="batchFile" class="form-label fw-semibold">Upload CSV or TXT</label>
+            <input type="file" id="batchFile" name="batch_file" class="form-control" accept=".csv,.txt" aria-label="Batch file input">
+            <div class="helper-text mt-2">CSV should include a column named text/review/content. If missing, first column is used.</div>
+            <button type="submit" class="btn btn-dark mt-3" id="batchBtn">Run Batch Analysis</button>
+        </form>
+    </section>
+
+    {% if result %}
+    <section class="card card-custom mb-4" id="resultCard" aria-label="Prediction result">
+        <div class="result-head">
+            <h2 class="section-title mb-0">Prediction Result</h2>
+            <div class="result-actions">
+                <button type="button" class="btn btn-sm btn-outline-primary" id="copyResultBtn">Copy Result</button>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="printResultBtn">Print Report</button>
+            </div>
+        </div>
+
+        <div class="result-grid">
+            <div class="result-left">
+                <div id="emotionBadge" class="emotion-badge emotion-{{ result.final_emotion.lower() }}">
+                    {{ result.final_emotion }}
+                </div>
+                <div class="meta-line">Model Label: <strong>{{ result.model_emotion }}</strong></div>
+                <div class="meta-line">Context: <strong>{{ result.context }}</strong></div>
+                <div class="meta-line">Processing Time: <strong>{{ result.processing_ms }} ms</strong></div>
+                <div class="meta-line">Cache Hit: <strong>{{ "Yes" if result.from_cache else "No" }}</strong></div>
+            </div>
+
+            <div class="result-right">
+                <div class="gauge-wrap">
+                    <div class="confidence-gauge"
+                         id="confidenceGauge"
+                         data-confidence="{{ result.confidence_pct }}"
+                         role="img"
+                         aria-label="Confidence gauge">
+                        <div class="gauge-inner">
+                            <div class="gauge-value">{{ result.confidence_pct }}%</div>
+                            <div class="gauge-label">Confidence</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <h3 class="sub-title mt-4">All Emotion Classes</h3>
+        <div class="probs-grid">
+            {% for p in result.all_probabilities_pct %}
+            <div class="prob-item">
+                <div class="prob-label">{{ p.emotion }}</div>
+                <div class="prob-bar">
+                    <div class="prob-fill" data-prob="{{ p.value }}"></div>
+                </div>
+                <div class="prob-value">{{ p.value }}%</div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <h3 class="sub-title mt-4">Top Attention Tokens</h3>
+        <div class="token-list">
+            {% if result.attention_tokens %}
+                {% for token in result.attention_tokens %}
+                <span class="token-chip" style="--w: {{ (token.weight * 100)|round(0) }}%">
+                    {{ token.token }} ({{ token.weight }})
+                </span>
+                {% endfor %}
+            {% else %}
+                <span class="helper-text">Attention details unavailable for this model.</span>
+            {% endif %}
+        </div>
+    </section>
+    {% endif %}
+
+    {% if batch_result %}
+    <section class="card card-custom mb-4" aria-label="Batch result">
+        <div class="result-head">
+            <h2 class="section-title mb-0">Batch Summary</h2>
+            <div class="result-actions">
+                <a href="{{ url_for('export_batch', fmt='csv') }}" class="btn btn-sm btn-outline-dark">Export CSV</a>
+                <a href="{{ url_for('export_batch', fmt='json') }}" class="btn btn-sm btn-outline-dark">Export JSON</a>
+            </div>
+        </div>
+        <div class="meta-line">Rows: <strong>{{ batch_result.processed_rows }}/{{ batch_result.total_rows }}</strong></div>
+        <div class="meta-line">Total Time: <strong>{{ batch_result.duration_ms }} ms</strong></div>
+
+        <div class="dist-list mt-3">
+            {% for item in batch_result.distribution %}
+            <div class="dist-item">
+                <span class="dist-emotion">{{ item.emotion }}</span>
+                <span class="dist-count">{{ item.count }}</span>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="table-responsive mt-3">
+            <table class="table table-sm table-striped align-middle">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Text</th>
+                        <th>Emotion</th>
+                        <th>Confidence</th>
+                        <th>Time (ms)</th>
+                        <th>Error</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in batch_result.rows %}
+                    <tr>
+                        <td>{{ row.row }}</td>
+                        <td>{{ row.text }}</td>
+                        <td>{{ row.emotion }}</td>
+                        <td>{{ row.confidence }}%</td>
+                        <td>{{ row.processing_ms if row.processing_ms is defined else "" }}</td>
+                        <td>{{ row.error }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="card card-custom mb-4" aria-label="Results history">
+        <div class="result-head">
+            <h2 class="section-title mb-0">Results History</h2>
+            <div class="result-actions">
+                <a href="{{ url_for('export_history', fmt='csv') }}" class="btn btn-sm btn-outline-secondary">Export CSV</a>
+                <a href="{{ url_for('export_history', fmt='json') }}" class="btn btn-sm btn-outline-secondary">Export JSON</a>
+            </div>
+        </div>
+        <div id="trendContainer"
+             class="trend-bars"
+             data-history='{{ history_distribution|tojson }}'
+             aria-label="Emotion trend chart">
+        </div>
+        <div class="table-responsive mt-3">
+            <table class="table table-sm table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Context</th>
+                        <th>Text</th>
+                        <th>Final</th>
+                        <th>Model</th>
+                        <th>Conf.</th>
+                        <th>ms</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in history|reverse %}
+                    <tr>
+                        <td>{{ item.timestamp }}</td>
+                        <td>{{ item.context }}</td>
+                        <td>{{ item.input_text }}</td>
+                        <td>{{ item.final_emotion }}</td>
+                        <td>{{ item.model_emotion }}</td>
+                        <td>{{ item.confidence_pct }}%</td>
+                        <td>{{ item.processing_ms }}</td>
+                    </tr>
+                    {% endfor %}
+                    {% if not history %}
+                    <tr><td colspan="7" class="text-muted">No history yet.</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

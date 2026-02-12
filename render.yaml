@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: emotion-classifier
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -w 1 -k gthread --threads 4 --timeout 180 --bind 0.0.0.0:$PORT app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: TF_CPP_MIN_LOG_LEVEL
+        value: "2"

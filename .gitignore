@@ -1,0 +1,30 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local environments
+.venv/
+venv/
+env/
+.env
+
+# Large training artifacts / raw datasets
+embeddings/glove.twitter.27B.100d.txt
+embeddings/glove.6B.100d.txt
+data/raw/
+data/processed/X_train.npy
+data/processed/X_test.npy
+data/processed/y_train.npy
+data/processed/y_test.npy
+
+# Keep deployment inference artifacts
+!data/processed/tokenizer.pickle
+!data/processed/label_encoder.pickle
+!saved_models/emotion_model_final.keras
