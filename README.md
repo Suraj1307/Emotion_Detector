@@ -1,5 +1,5 @@
 ---
-title: AffectLens AI: Emotion Intelligence Studio
+title: "AffectLens AI: Emotion Intelligence Studio"
 emoji: 😄
 colorFrom: blue
 colorTo: indigo
