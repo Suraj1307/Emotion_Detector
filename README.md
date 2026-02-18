@@ -1,5 +1,5 @@
 ---
-title: Emotion Classification Dashboard
+title: AffectLens AI: Emotion Intelligence Studio
 emoji: 😄
 colorFrom: blue
 colorTo: indigo
@@ -10,7 +10,7 @@ app_file: app.py
 pinned: false
 ---
 
-# Attention-Based Emotion Classification
+# AffectLens AI: Emotion Intelligence Studio
 
 This repository includes an attention-based BiLSTM-CNN emotion classifier and a
 research-grade evaluation pipeline.

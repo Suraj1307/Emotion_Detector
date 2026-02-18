@@ -1,10 +1,12 @@
 ﻿import json
+import os
 from pathlib import Path
 
 import gradio as gr
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
+from huggingface_hub import hf_hub_download
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.preprocessing.text import tokenizer_from_json
 
@@ -12,8 +14,10 @@ from src.model import AttentionLayer
 
 ROOT = Path(__file__).resolve().parent
 RESULTS_PATH = ROOT / "research" / "outputs" / "research_results.json"
-MODEL_PATH = ROOT / "saved_models" / "emotion_model_final.keras"
-TOKENIZER_PATH = ROOT / "data" / "processed" / "tokenizer.json"
+
+MODEL_REPO_ID = os.getenv("MODEL_REPO_ID", "SurajAI2025/emotion-model-7")
+MODEL_FILENAME = os.getenv("MODEL_FILENAME", "emotion_model_final.keras")
+
 DEFAULT_LABELS = [
     "anger",
     "disgust",
@@ -25,69 +29,143 @@ DEFAULT_LABELS = [
 ]
 
 
-def _load_json(path: Path):
+def _is_lfs_pointer(path: Path) -> bool:
     if not path.exists():
+        return False
+    try:
+        first_line = path.read_text(encoding="utf-8", errors="ignore").splitlines()[0]
+        return first_line.strip() == "version https://git-lfs.github.com/spec/v1"
+    except Exception:
+        return False
+
+
+def _load_json(path: Path):
+    if not path.exists() or _is_lfs_pointer(path):
         return None
-    text = path.read_text(encoding="utf-8", errors="ignore")
-    if text.startswith("version https://git-lfs.github.com/spec/v1"):
-        return None
-    return json.loads(text)
+    return json.loads(path.read_text(encoding="utf-8", errors="ignore"))
 
 
-def load_artifacts():
-    results = _load_json(RESULTS_PATH)
+def _resolve_local_or_hf(candidates):
+    for candidate in candidates:
+        p = Path(candidate)
+        if p.exists() and not _is_lfs_pointer(p):
+            return str(p)
 
-    model = None
-    tokenizer = None
-    labels = list(DEFAULT_LABELS)
+    for candidate in candidates:
+        try:
+            return hf_hub_download(repo_id=MODEL_REPO_ID, filename=candidate)
+        except Exception:
+            continue
 
-    if MODEL_PATH.exists():
+    return None
+
+
+def _load_results():
+    return _load_json(RESULTS_PATH)
+
+
+def _load_labels(results):
+    candidates = [
+        ROOT / "data" / "processed" / "label_encoder.json",
+        ROOT / "label_encoder.json",
+        ROOT / "label_classes.json",
+    ]
+    for c in candidates:
+        payload = _load_json(c)
+        if isinstance(payload, dict) and "classes" in payload:
+            return payload["classes"]
+        if isinstance(payload, list) and payload:
+            return payload
+
+    if isinstance(results, dict) and isinstance(results.get("labels"), list) and results.get("labels"):
+        return results["labels"]
+
+    return list(DEFAULT_LABELS)
+
+
+def _load_model():
+    model_candidates = [
+        str(ROOT / "saved_models" / MODEL_FILENAME),
+        str(ROOT / MODEL_FILENAME),
+        MODEL_FILENAME,
+        f"saved_models/{MODEL_FILENAME}",
+    ]
+    model_file = _resolve_local_or_hf(model_candidates)
+    if not model_file:
+        return None, "Model artifact not found locally or on HF repo."
+    try:
         model = tf.keras.models.load_model(
-            MODEL_PATH,
+            model_file,
             custom_objects={"AttentionLayer": AttentionLayer},
             compile=False,
         )
-
-    tok_payload = _load_json(TOKENIZER_PATH)
-    if tok_payload is not None:
-        tokenizer = tokenizer_from_json(json.dumps(tok_payload))
-
-    if results and isinstance(results.get("labels"), list) and results.get("labels"):
-        labels = results["labels"]
-
-    return results, model, tokenizer, labels
+        return model, f"Model loaded from: {model_file}"
+    except Exception as e:
+        return None, f"Model load error: {type(e).__name__}: {e}"
 
 
-RESULTS, MODEL, TOKENIZER, LABELS = load_artifacts()
+def _load_tokenizer():
+    tok_candidates = [
+        str(ROOT / "data" / "processed" / "tokenizer.json"),
+        str(ROOT / "tokenizer.json"),
+        "tokenizer.json",
+        "data/processed/tokenizer.json",
+    ]
+    tok_file = _resolve_local_or_hf(tok_candidates)
+    if not tok_file:
+        return None, "Tokenizer artifact not found locally or on HF repo."
+    try:
+        payload = _load_json(Path(tok_file))
+        if payload is None:
+            return None, "Tokenizer file exists but is unreadable or LFS pointer."
+        tok = tokenizer_from_json(json.dumps(payload))
+        return tok, f"Tokenizer loaded from: {tok_file}"
+    except Exception as e:
+        return None, f"Tokenizer load error: {type(e).__name__}: {e}"
+
+
+def load_artifacts():
+    results = _load_results()
+    labels = _load_labels(results)
+
+    model, model_msg = _load_model()
+    tokenizer, tok_msg = _load_tokenizer()
+
+    status = [
+        f"MODEL_REPO_ID: {MODEL_REPO_ID}",
+        model_msg,
+        tok_msg,
+        f"Labels source: {'research_results' if results and results.get('labels') else 'default/local'}",
+    ]
+
+    return results, model, tokenizer, labels, "\n".join(status)
+
+
+RESULTS, MODEL, TOKENIZER, LABELS, INIT_STATUS = load_artifacts()
 
 
 def predict_text(text):
     if MODEL is None:
-        return "Model not loaded.", ""
+        return "Model not loaded.", INIT_STATUS
     if TOKENIZER is None:
-        return (
-            "Tokenizer not available (likely LFS pointer). Prediction disabled.",
-            "",
-        )
+        return "Tokenizer not loaded.", INIT_STATUS
     if not text or not text.strip():
         return "Please enter text.", ""
 
     max_len = int(MODEL.input_shape[1])
     seq = TOKENIZER.texts_to_sequences([text.lower()])
     x = pad_sequences(seq, maxlen=max_len, padding="post", truncating="post")
+
     probs = MODEL.predict(x, verbose=0)[0]
     pred_id = int(np.argmax(probs))
     conf = float(np.max(probs))
 
-    if LABELS and pred_id < len(LABELS):
-        pred_label = LABELS[pred_id]
-    else:
-        pred_label = f"class_{pred_id}"
+    pred_label = LABELS[pred_id] if pred_id < len(LABELS) else f"class_{pred_id}"
 
     top_idx = np.argsort(probs)[-5:][::-1]
     lines = []
     for i in top_idx:
-        lbl = LABELS[i] if LABELS and i < len(LABELS) else f"class_{i}"
+        lbl = LABELS[i] if i < len(LABELS) else f"class_{i}"
         lines.append(f"- {lbl}: {probs[i]*100:.2f}%")
 
     summary = f"Primary Emotion: {pred_label} ({conf*100:.2f}%)"
@@ -103,8 +181,14 @@ def plot_distribution():
         return fig
 
     dist = RESULTS.get("test_distribution", [])
-    labels = [d["label"] for d in dist]
-    counts = [d["count"] for d in dist]
+    labels = [d.get("label", "") for d in dist]
+    counts = [d.get("count", 0) for d in dist]
+
+    if not labels:
+        ax.text(0.5, 0.5, "Distribution data missing", ha="center", va="center")
+        ax.axis("off")
+        return fig
+
     ax.bar(labels, counts)
     ax.set_title("Test Class Distribution")
     ax.set_ylabel("Count")
@@ -155,9 +239,13 @@ def metrics_table_md():
     )
 
 
-with gr.Blocks(title="Emotion Classifier + Research Graphs") as demo:
-    gr.Markdown("# Emotion Classification Dashboard")
-    gr.Markdown("Prediction + research evaluation graphs from `research/outputs/research_results.json`.")
+with gr.Blocks(title="AffectLens AI: Emotion Intelligence Studio") as demo:
+    gr.Markdown("# AffectLens AI: Emotion Intelligence Studio")
+    gr.Markdown(
+        "Prediction + research evaluation graphs from `research/outputs/research_results.json`."
+    )
+    gr.Markdown("## Initialization Status")
+    gr.Code(INIT_STATUS, language="text")
 
     with gr.Row():
         with gr.Column(scale=1):
@@ -167,12 +255,22 @@ with gr.Blocks(title="Emotion Classifier + Research Graphs") as demo:
             out_top = gr.Textbox(label="Top-5 Probabilities")
             btn.click(predict_text, inputs=txt, outputs=[out_main, out_top])
 
+            gr.Examples(
+                examples=[
+                    ["I am absolutely thrilled and grateful for this wonderful news."],
+                    ["This is terrible and unacceptable. I am furious and angry."],
+                    ["I feel sad, hopeless, and heartbroken today."],
+                ],
+                inputs=txt,
+                label="Quick Test Examples",
+            )
+
             gr.Markdown("## Core Metrics")
             gr.Markdown(metrics_table_md())
 
         with gr.Column(scale=1):
-            dist_plot = gr.Plot(value=plot_distribution)
-            cm_plot = gr.Plot(value=plot_confusion_matrix)
+            gr.Plot(value=plot_distribution)
+            gr.Plot(value=plot_confusion_matrix)
 
 if __name__ == "__main__":
     demo.launch()
