@@ -1,3 +1,15 @@
+---
+title: Emotion Classification Dashboard
+emoji: 😄
+colorFrom: blue
+colorTo: indigo
+sdk: gradio
+sdk_version: "5.34.0"
+python_version: "3.10"
+app_file: app.py
+pinned: false
+---
+
 # Attention-Based Emotion Classification
 
 This repository includes an attention-based BiLSTM-CNN emotion classifier and a
