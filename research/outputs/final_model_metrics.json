@@ -1,0 +1,139 @@
+{
+  "labels": [
+    "anger",
+    "disgust",
+    "fear",
+    "joy",
+    "neutral",
+    "sadness",
+    "surprise"
+  ],
+  "accuracy": 0.604221635883905,
+  "macro_precision": 0.4452550463859231,
+  "macro_recall": 0.6337091755420724,
+  "macro_f1": 0.4958592108572234,
+  "report": {
+    "anger": {
+      "precision": 0.35703479576399394,
+      "recall": 0.4865979381443299,
+      "f1-score": 0.4118673647469459,
+      "support": 485.0
+    },
+    "disgust": {
+      "precision": 0.2571428571428571,
+      "recall": 0.5901639344262295,
+      "f1-score": 0.3582089552238806,
+      "support": 61.0
+    },
+    "fear": {
+      "precision": 0.375,
+      "recall": 0.7727272727272727,
+      "f1-score": 0.504950495049505,
+      "support": 66.0
+    },
+    "joy": {
+      "precision": 0.7744708994708994,
+      "recall": 0.7020383693045563,
+      "f1-score": 0.7364779874213836,
+      "support": 1668.0
+    },
+    "neutral": {
+      "precision": 0.7263157894736842,
+      "recall": 0.5357142857142857,
+      "f1-score": 0.6166219839142091,
+      "support": 1932.0
+    },
+    "sadness": {
+      "precision": 0.37220843672456577,
+      "recall": 0.6224066390041494,
+      "f1-score": 0.4658385093167702,
+      "support": 241.0
+    },
+    "surprise": {
+      "precision": 0.25461254612546125,
+      "recall": 0.7263157894736842,
+      "f1-score": 0.3770491803278688,
+      "support": 95.0
+    },
+    "accuracy": 0.604221635883905,
+    "macro avg": {
+      "precision": 0.4452550463859231,
+      "recall": 0.6337091755420724,
+      "f1-score": 0.4958592108572234,
+      "support": 4548.0
+    },
+    "weighted avg": {
+      "precision": 0.6645882983606879,
+      "recall": 0.604221635883905,
+      "f1-score": 0.6206637774102466,
+      "support": 4548.0
+    }
+  },
+  "confusion_matrix": [
+    [
+      236,
+      42,
+      3,
+      42,
+      118,
+      28,
+      16
+    ],
+    [
+      9,
+      36,
+      6,
+      1,
+      7,
+      2,
+      0
+    ],
+    [
+      4,
+      2,
+      51,
+      2,
+      4,
+      2,
+      1
+    ],
+    [
+      79,
+      22,
+      33,
+      1171,
+      224,
+      74,
+      65
+    ],
+    [
+      315,
+      30,
+      31,
+      269,
+      1035,
+      144,
+      108
+    ],
+    [
+      14,
+      8,
+      10,
+      22,
+      25,
+      150,
+      12
+    ],
+    [
+      4,
+      0,
+      2,
+      5,
+      12,
+      3,
+      69
+    ]
+  ],
+  "confusion_matrix_path": "C:\\Users\\KIIT0001\\Desktop\\Mini_Project_\\research\\outputs\\final_model_confusion_matrix.png",
+  "metrics_table_path": "C:\\Users\\KIIT0001\\Desktop\\Mini_Project_\\research\\outputs\\final_model_metrics_table.md"
+}
