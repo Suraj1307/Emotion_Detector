@@ -12,13 +12,19 @@ from typing import Tuple
 # Disable Spaces hot-reload watcher (can crash on some runtimes)
 os.environ.setdefault("SPACES_DISABLE_RELOAD", "1")
 os.environ.setdefault("GRADIO_WATCHFN_SPACES", "0")
+# Reduce TensorFlow runtime noise on CPU hosts.
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
+os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "-1")
 # ❌ Removed: TF_USE_LEGACY_KERAS (causes Keras3 conflict)
 if os.environ.get("TF_USE_LEGACY_KERAS") == "1":
     os.environ["TF_USE_LEGACY_KERAS"] = "0"
 os.environ.setdefault("KERAS_BACKEND", "tensorflow")
 
 import gradio as gr
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 import keras  # ✅ Use standalone keras (v3)
 from huggingface_hub import hf_hub_download
@@ -28,6 +34,8 @@ from tensorflow.keras.preprocessing.text import tokenizer_from_json
 from transformers import AutoTokenizer
 
 from src.model import AttentionLayer
+
+ROOT = Path(__file__).resolve().parent
 
 
 # =====================================================
@@ -92,6 +100,7 @@ EMOTION_COLORS = {
 os.environ["TF_DETERMINISTIC_OPS"] = "1"
 np.random.seed(42)
 tf.random.set_seed(42)
+tf.get_logger().setLevel("ERROR")
 
 
 # =====================================================
@@ -515,6 +524,71 @@ def build_attention_heatmap_html(tokens, weights):
     return "<div style='line-height:2'>" + "".join(parts) + "</div>"
 
 
+def confidence_band(conf_pct: float) -> str:
+    if conf_pct >= 90:
+        return "High"
+    if conf_pct >= 70:
+        return "Moderate"
+    if conf_pct >= 50:
+        return "Low"
+    return "Very Low"
+
+
+def build_rationale_html(emotion: str, confidence: float, prob_df: pd.DataFrame, attn_df: pd.DataFrame):
+    top2 = prob_df.head(2).to_dict("records")
+    alt = ""
+    if len(top2) > 1:
+        alt = f"{top2[1]['emotion'].title()} ({top2[1]['probability_%']}%)"
+    top_tokens = ", ".join(attn_df["token"].head(5).astype(str).tolist()) if len(attn_df) else "N/A"
+    return (
+        f"<div style='font-size:14px'>"
+        f"<b>Confidence Band:</b> {confidence_band(confidence)}<br>"
+        f"<b>Primary vs Next:</b> {emotion.title()} ({round(confidence,2)}%)"
+        + (f" vs {alt}<br>" if alt else "<br>")
+        + f"<b>Top Attention Tokens:</b> {html.escape(top_tokens)}"
+        f"</div>"
+    )
+
+
+def compute_dataset_stats_md():
+    stats = []
+    for name, fp in [("train", ROOT / "data_train.csv"), ("validation", ROOT / "data_validation.csv"), ("test", ROOT / "data_test.csv")]:
+        if fp.exists():
+            try:
+                n = sum(1 for _ in fp.open("r", encoding="utf-8", errors="ignore")) - 1
+                stats.append(f"- {name}: {max(n,0)} samples")
+            except Exception:
+                pass
+    if not stats:
+        return "- dataset files not found locally"
+    return "\n".join(stats)
+
+
+def build_model_info_md():
+    if model is None:
+        return "Model unavailable."
+    input_desc = model.input_shape
+    try:
+        params = f"{model.count_params():,}"
+    except Exception:
+        params = "N/A"
+    classes = ", ".join(list(label_encoder.classes_)) if label_encoder is not None else "N/A"
+    return (
+        "### Model Information\n"
+        f"- Repo: `{MODEL_REPO_ID}` (`{MODEL_REPO_TYPE}`)\n"
+        f"- Fallback Repo: `{MODEL_REPO_FALLBACK_ID}` (`{MODEL_REPO_FALLBACK_TYPE}`)\n"
+        f"- Input Shape: `{input_desc}`\n"
+        f"- Parameters: `{params}`\n"
+        f"- Classes: {classes}\n"
+        f"- Runtime Metrics: {METRICS_TEXT}\n\n"
+        "### Architecture (Current)\n"
+        "- Embedding -> BiLSTM -> Attention -> Dense classifier\n"
+        "- Attention is visualized at token level in predictions\n\n"
+        "### Dataset Snapshot\n"
+        f"{compute_dataset_stats_md()}"
+    )
+
+
 def predict_and_explain(text):
 
     if INIT_ERROR:
@@ -561,28 +635,193 @@ def predict_and_explain(text):
     return result, heatmap
 
 
+def build_confidence_plot(labels, probs):
+    fig, ax = plt.subplots(figsize=(7, 3.6))
+    probs_pct = np.array(probs, dtype=np.float32) * 100.0
+    colors = [EMOTION_COLORS.get(lbl.lower(), "#6b7280") for lbl in labels]
+    y_pos = np.arange(len(labels))
+    ax.barh(y_pos, probs_pct, color=colors, alpha=0.9)
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels([l.title() for l in labels], fontsize=9)
+    ax.set_xlim(0, 100)
+    ax.set_xlabel("Confidence (%)")
+    ax.set_title("Emotion Probability Distribution")
+    ax.grid(axis="x", linestyle="--", alpha=0.25)
+    fig.tight_layout()
+    return fig
+
+
+def predict_full(text):
+    if INIT_ERROR:
+        msg = "Setup Error:\n" + INIT_ERROR
+        return msg, "", "", pd.DataFrame(columns=["token", "attention_weight"]), pd.DataFrame(columns=["emotion", "probability_%"]), None
+
+    if not text or not text.strip():
+        return "Please enter some text.", "", "", pd.DataFrame(columns=["token", "attention_weight"]), pd.DataFrame(columns=["emotion", "probability_%"]), None
+
+    if len(text) > MAX_INPUT_CHARS:
+        return f"Please keep input under {MAX_INPUT_CHARS} characters.", "", "", pd.DataFrame(columns=["token", "attention_weight"]), pd.DataFrame(columns=["emotion", "probability_%"]), None
+
+    normalized = normalize_social_text(text.strip())
+    model_inputs = _build_model_inputs([normalized], model, tokenizer, MAX_LEN)
+
+    t0 = time.perf_counter()
+    pred = model(model_inputs, training=False).numpy()[0]
+    dt_ms = (time.perf_counter() - t0) * 1000.0
+
+    pred_id = int(np.argmax(pred))
+    emotion = label_encoder.inverse_transform([pred_id])[0]
+    confidence = float(np.max(pred)) * 100
+    primary_color = EMOTION_COLORS.get(emotion.lower(), "#111827")
+
+    result = (
+        f"<div style='font-size:16px'>"
+        f"<div><b>Primary Emotion:</b> "
+        f"<span style='color:{primary_color}; font-weight:700'>{emotion.title()}</span> "
+        f"({round(confidence,2)}%)</div>"
+        f"<div style='margin-top:8px; color:#6b7280; font-size:12px'>"
+        f"Inference: {dt_ms:.1f} ms</div>"
+        f"</div>"
+    )
+
+    heatmap = "<div style='color:#6b7280'>Attention layer unavailable for this model.</div>"
+    attn_df = pd.DataFrame(columns=["token", "attention_weight"])
+    if ATTN_AVAILABLE:
+        try:
+            weights = compute_attention_weights(model_inputs)
+            tokens = extract_tokens_for_attention(normalized, model_inputs, tokenizer)
+            heatmap = build_attention_heatmap_html(tokens, weights)
+            n = min(len(tokens), len(weights))
+            attn_df = pd.DataFrame(
+                {
+                    "token": tokens[:n],
+                    "attention_weight": np.round(np.array(weights[:n], dtype=np.float32), 4),
+                }
+            ).sort_values("attention_weight", ascending=False)
+        except Exception:
+            heatmap = "<div style='color:#6b7280'>Attention could not be rendered for this input.</div>"
+
+    labels = list(label_encoder.classes_)
+    prob_df = pd.DataFrame(
+        {"emotion": labels, "probability_%": np.round(pred * 100.0, 2)}
+    ).sort_values("probability_%", ascending=False)
+    rationale_html = build_rationale_html(emotion, confidence, prob_df, attn_df)
+    conf_fig = build_confidence_plot(labels, pred)
+    return result, rationale_html, heatmap, attn_df.head(12), prob_df, conf_fig
+
+
+def analyze_batch(file_obj):
+    if INIT_ERROR:
+        return pd.DataFrame({"error": [INIT_ERROR]}), None
+    if file_obj is None:
+        return pd.DataFrame(columns=["text", "prediction", "confidence_%"]), None
+
+    file_path = file_obj.name if hasattr(file_obj, "name") else str(file_obj)
+    path = Path(file_path)
+    if not path.exists():
+        return pd.DataFrame({"error": ["Uploaded file not found."]}), None
+
+    try:
+        if path.suffix.lower() == ".csv":
+            df = pd.read_csv(path)
+            text_col = "text" if "text" in df.columns else df.columns[0]
+            texts = df[text_col].astype(str).tolist()
+        else:
+            texts = [line.strip() for line in path.read_text(encoding="utf-8", errors="ignore").splitlines() if line.strip()]
+    except Exception as e:
+        return pd.DataFrame({"error": [f"Failed to read file: {e}"]}), None
+
+    rows = []
+    label_counts = {}
+    for t in texts:
+        normalized = normalize_social_text(t)
+        model_inputs = _build_model_inputs([normalized], model, tokenizer, MAX_LEN)
+        pred = model(model_inputs, training=False).numpy()[0]
+        pred_id = int(np.argmax(pred))
+        lbl = label_encoder.inverse_transform([pred_id])[0]
+        conf = float(np.max(pred)) * 100.0
+        rows.append({"text": t, "prediction": lbl, "confidence_%": round(conf, 2)})
+        label_counts[lbl] = label_counts.get(lbl, 0) + 1
+
+    out_df = pd.DataFrame(rows)
+    if not label_counts:
+        return out_df, None
+
+    labels = list(label_counts.keys())
+    values = [label_counts[k] for k in labels]
+    fig, ax = plt.subplots(figsize=(6.5, 3.5))
+    colors = [EMOTION_COLORS.get(lbl.lower(), "#6b7280") for lbl in labels]
+    ax.bar(labels, values, color=colors, alpha=0.9)
+    ax.set_title("Batch Emotion Distribution")
+    ax.set_ylabel("Count")
+    ax.tick_params(axis="x", rotation=30)
+    fig.tight_layout()
+    return out_df, fig
+
+
 # =====================================================
-# UI (UNCHANGED)
+# UI
 # =====================================================
 
-demo = gr.Interface(
-    fn=predict_and_explain,
-    inputs=gr.Textbox(
-        lines=4,
-        label="Social Media Text",
-        placeholder="Type a tweet or Reddit comment...",
-        max_lines=8,
-    ),
-    outputs=[
-        gr.HTML(label="Emotion Prediction"),
-        gr.HTML(label="Attention Heatmap"),
-    ],
-    title="Emotion Classification in Social Media Using Attention-Based BiLSTM",
-    description=(
-        "Classifies short, noisy social media text and highlights emotionally relevant cues "
-        "using an attention-enabled BiLSTM pipeline."
-    ),
-)
+with gr.Blocks() as demo:
+    gr.Markdown("## Emotion Classification in Social Media Using Attention-Based BiLSTM")
+    gr.Markdown(
+        "Phase 1: full emotion probabilities + batch analysis. "
+        "Phase 2: confidence visualization + attention highlighting."
+    )
+    with gr.Accordion("Model Diagnostics & Documentation", open=False):
+        gr.Markdown(build_model_info_md())
+
+    with gr.Tab("Single Prediction"):
+        gr.Markdown("### Model Predictions")
+        text_input = gr.Textbox(
+            lines=4,
+            label="Social Media Text",
+            placeholder="Type a tweet or Reddit comment...",
+            max_lines=8,
+        )
+        with gr.Row():
+            predict_btn = gr.Button("Submit")
+            clear_btn = gr.Button("Clear")
+        pred_html = gr.HTML(label="Emotion Prediction")
+        rationale_html = gr.HTML(label="Prediction Rationale")
+        gr.Markdown("### Attention Analysis")
+        heatmap_html = gr.HTML(label="Attention Heatmap")
+        attn_table = gr.Dataframe(
+            headers=["token", "attention_weight"],
+            label="Top Attention Weights",
+            interactive=False,
+        )
+        prob_table = gr.Dataframe(
+            headers=["emotion", "probability_%"],
+            label="All Emotion Probabilities",
+            interactive=False,
+        )
+        conf_plot = gr.Plot(label="Confidence Chart")
+
+        predict_btn.click(
+            fn=predict_full,
+            inputs=[text_input],
+            outputs=[pred_html, rationale_html, heatmap_html, attn_table, prob_table, conf_plot],
+        )
+        clear_btn.click(
+            lambda: ("", "", "", pd.DataFrame(columns=["token", "attention_weight"]), pd.DataFrame(columns=["emotion", "probability_%"]), None),
+            outputs=[pred_html, rationale_html, heatmap_html, attn_table, prob_table, conf_plot],
+        )
+
+    with gr.Tab("Batch Analysis"):
+        batch_file = gr.File(
+            label="Upload .csv (text column) or .txt (one text per line)",
+            file_types=[".csv", ".txt"],
+        )
+        batch_btn = gr.Button("Run Batch Analysis")
+        batch_table = gr.Dataframe(label="Batch Predictions", interactive=False)
+        batch_plot = gr.Plot(label="Batch Distribution")
+        batch_btn.click(
+            fn=analyze_batch,
+            inputs=[batch_file],
+            outputs=[batch_table, batch_plot],
+        )
 
 if __name__ == "__main__":
     demo.launch(ssr_mode=False)
