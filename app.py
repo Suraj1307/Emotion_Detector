@@ -54,6 +54,15 @@ LABELS_PATH_OVERRIDE = os.getenv("LABELS_PATH", "").strip()
 MAX_INPUT_CHARS = int(os.getenv("MAX_INPUT_CHARS", "280"))
 DEFAULT_TOP_K = int(os.getenv("DEFAULT_TOP_K", "5"))
 METRICS_TEXT = "Test Accuracy: 0.661 | Macro F1: 0.322 (n=4590)"
+EXAMPLE_TEXTS = [
+    ["I am so happy and excited about this wonderful day!"],
+    ["I hate this so much and I am furious right now."],
+    ["I feel really sad and heartbroken about everything."],
+    ["This is shocking and completely unexpected wow!"],
+    ["I am scared and nervous about what will happen next."],
+    ["This behavior is disgusting and unacceptable."],
+    ["The update is okay, nothing special, just normal."],
+]
 
 LABEL_CANDIDATES = [
     "label_classes.json",
@@ -843,6 +852,11 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
             label="Social Media Text",
             placeholder="Enter a tweet, comment, or social media post...",
             max_lines=8,
+        )
+        gr.Examples(
+            examples=EXAMPLE_TEXTS,
+            inputs=[text_input],
+            label="Quick Examples",
         )
         with gr.Row():
             predict_btn = gr.Button("Submit")
