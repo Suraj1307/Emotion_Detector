@@ -54,6 +54,7 @@ LABELS_PATH_OVERRIDE = os.getenv("LABELS_PATH", "").strip()
 MAX_INPUT_CHARS = int(os.getenv("MAX_INPUT_CHARS", "280"))
 DEFAULT_TOP_K = int(os.getenv("DEFAULT_TOP_K", "5"))
 METRICS_TEXT = "Test Accuracy: 0.661 | Macro F1: 0.322 (n=4590)"
+LOW_CONF_WARN_THRESHOLD = float(os.getenv("LOW_CONF_WARN_THRESHOLD", "40"))
 EXAMPLE_TEXTS = [
     ["I am so happy and excited about this wonderful day!"],
     ["I hate this so much and I am furious right now."],
@@ -162,10 +163,23 @@ def is_lfs_pointer(file_path: str) -> bool:
 
 def normalize_social_text(text: str) -> str:
     text = str(text).lower()
+    sarcasm_patterns = ["yeah right", "as if", "sure...", "/s", "lol sure", "totally great"]
+    fear_words = {"terrified", "scared", "horrifying", "frightening", "panic", "afraid"}
+    disgust_words = {"disgusting", "repulsive", "revolting", "gross", "nasty"}
+    surprise_words = {"unexpected", "shocking", "unbelievable", "omg", "wow"}
+
     text = re.sub(r"http\\S+|www\\.\\S+", " URL ", text)
     text = re.sub(r"@\\w+", " USER ", text)
     text = re.sub(r"#(\\w+)", r"\\1", text)
     text = re.sub(r"\\s+", " ", text).strip()
+    if any(p in text for p in sarcasm_patterns):
+        text += " sarcasm_cue"
+    if any(w in text for w in fear_words):
+        text += " fear_cue"
+    if any(w in text for w in disgust_words):
+        text += " disgust_cue"
+    if any(w in text for w in surprise_words):
+        text += " surprise_cue"
     return text
 
 
@@ -598,6 +612,15 @@ def build_primary_result_card(emotion: str, confidence: float, dt_ms: float) -> 
     icon = EMOTION_ICONS.get(e, "[EMOTION]")
     band = confidence_band(confidence)
     width = min(100.0, max(2.0, float(confidence)))
+    warning_html = ""
+    if confidence < LOW_CONF_WARN_THRESHOLD:
+        warning_html = (
+            "<div style='margin-top:10px;padding:8px;border-radius:8px;"
+            "background:#fff7ed;color:#9a3412;font-size:13px;'>"
+            "Low-confidence prediction. Consider the alternative emotions below."
+            "</div>"
+        )
+
     return (
         "<div class='result-card'>"
         "<div class='result-title'>Primary Prediction</div>"
@@ -608,7 +631,30 @@ def build_primary_result_card(emotion: str, confidence: float, dt_ms: float) -> 
         "</div>"
         f"<div class='result-band'>{band}</div>"
         f"<div class='result-meta'>Inference: {dt_ms:.1f} ms</div>"
+        f"{warning_html}"
         "</div>"
+    )
+
+
+def build_alternative_emotions_html(prob_df: pd.DataFrame) -> str:
+    top3 = prob_df.head(3).to_dict("records")
+    if not top3:
+        return ""
+    rows = []
+    for i, row in enumerate(top3, start=1):
+        emo = str(row["emotion"]).lower()
+        color = EMOTION_COLORS.get(emo, "#6b7280")
+        rows.append(
+            f"<div style='margin:6px 0;'>"
+            f"<span style='display:inline-block;width:20px;color:#6b7280;'>{i}.</span> "
+            f"<span style='color:{color};font-weight:700'>{emo.title()}</span> "
+            f"<span style='color:#374151'>({row['probability_%']}%)</span></div>"
+        )
+    return (
+        "<div class='result-card'>"
+        "<div class='result-title'>Alternative Emotions (Top 3)</div>"
+        + "".join(rows)
+        + "</div>"
     )
 
 
@@ -735,13 +781,13 @@ def build_confidence_plot(labels, probs):
 def predict_full(text):
     if INIT_ERROR:
         msg = "Setup Error:\n" + INIT_ERROR
-        return msg, "", "", pd.DataFrame(columns=["token", "attention_weight"]), pd.DataFrame(columns=["emotion", "probability_%"]), None
+        return msg, "", "", "", pd.DataFrame(columns=["token", "attention_weight"]), pd.DataFrame(columns=["emotion", "probability_%"]), None
 
     if not text or not text.strip():
-        return "Please enter some text.", "", "", pd.DataFrame(columns=["token", "attention_weight"]), pd.DataFrame(columns=["emotion", "probability_%"]), None
+        return "Please enter some text.", "", "", "", pd.DataFrame(columns=["token", "attention_weight"]), pd.DataFrame(columns=["emotion", "probability_%"]), None
 
     if len(text) > MAX_INPUT_CHARS:
-        return f"Please keep input under {MAX_INPUT_CHARS} characters.", "", "", pd.DataFrame(columns=["token", "attention_weight"]), pd.DataFrame(columns=["emotion", "probability_%"]), None
+        return f"Please keep input under {MAX_INPUT_CHARS} characters.", "", "", "", pd.DataFrame(columns=["token", "attention_weight"]), pd.DataFrame(columns=["emotion", "probability_%"]), None
 
     normalized = normalize_social_text(text.strip())
     model_inputs = _build_model_inputs([normalized], model, tokenizer, MAX_LEN)
@@ -776,21 +822,35 @@ def predict_full(text):
     prob_df = pd.DataFrame(
         {"emotion": labels, "probability_%": np.round(pred * 100.0, 2)}
     ).sort_values("probability_%", ascending=False)
+    alternatives_html = build_alternative_emotions_html(prob_df)
     rationale_html = build_rationale_html(emotion, confidence, prob_df, attn_df)
     conf_fig = build_confidence_plot(labels, pred)
-    return result, rationale_html, heatmap, attn_df.head(12), prob_df, conf_fig
+    return result, rationale_html, alternatives_html, heatmap, attn_df.head(12), prob_df, conf_fig
+
+
+def write_batch_exports(out_df: pd.DataFrame):
+    if out_df is None or out_df.empty:
+        return None, None
+    out_dir = ROOT / "research" / "outputs"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    csv_path = out_dir / f"batch_predictions_{stamp}.csv"
+    json_path = out_dir / f"batch_predictions_{stamp}.json"
+    out_df.to_csv(csv_path, index=False)
+    out_df.to_json(json_path, orient="records", indent=2)
+    return str(csv_path), str(json_path)
 
 
 def analyze_batch(file_obj):
     if INIT_ERROR:
-        return pd.DataFrame({"error": [INIT_ERROR]}), None
+        return pd.DataFrame({"error": [INIT_ERROR]}), None, None, None
     if file_obj is None:
-        return pd.DataFrame(columns=["text", "prediction", "confidence_%"]), None
+        return pd.DataFrame(columns=["text", "prediction", "confidence_%"]), None, None, None
 
     file_path = file_obj.name if hasattr(file_obj, "name") else str(file_obj)
     path = Path(file_path)
     if not path.exists():
-        return pd.DataFrame({"error": ["Uploaded file not found."]}), None
+        return pd.DataFrame({"error": ["Uploaded file not found."]}), None, None, None
 
     try:
         if path.suffix.lower() == ".csv":
@@ -800,7 +860,7 @@ def analyze_batch(file_obj):
         else:
             texts = [line.strip() for line in path.read_text(encoding="utf-8", errors="ignore").splitlines() if line.strip()]
     except Exception as e:
-        return pd.DataFrame({"error": [f"Failed to read file: {e}"]}), None
+        return pd.DataFrame({"error": [f"Failed to read file: {e}"]}), None, None, None
 
     rows = []
     label_counts = {}
@@ -816,7 +876,8 @@ def analyze_batch(file_obj):
 
     out_df = pd.DataFrame(rows)
     if not label_counts:
-        return out_df, None
+        csv_path, json_path = write_batch_exports(out_df)
+        return out_df, None, csv_path, json_path
 
     labels = list(label_counts.keys())
     values = [label_counts[k] for k in labels]
@@ -827,7 +888,8 @@ def analyze_batch(file_obj):
     ax.set_ylabel("Count")
     ax.tick_params(axis="x", rotation=30)
     fig.tight_layout()
-    return out_df, fig
+    csv_path, json_path = write_batch_exports(out_df)
+    return out_df, fig, csv_path, json_path
 
 
 # =====================================================
@@ -838,10 +900,6 @@ SAMPLE_BATCH_FILE = ensure_sample_batch_file()
 
 with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
     gr.Markdown("## Emotion Classification in Social Media Using Attention-Based BiLSTM")
-    gr.Markdown(
-        "Phase 1: full emotion probabilities + batch analysis. "
-        "Phase 2: confidence visualization + attention highlighting."
-    )
     with gr.Accordion("Model Diagnostics & Documentation", open=False):
         gr.Markdown(build_model_info_md())
 
@@ -865,6 +923,7 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
             with gr.Column(scale=1):
                 pred_html = gr.HTML(label="Primary Emotion")
                 rationale_html = gr.HTML(label="Prediction Rationale")
+                alternatives_html = gr.HTML(label="Alternative Emotions")
             with gr.Column(scale=1):
                 conf_plot = gr.Plot(label="Confidence Chart")
                 prob_table = gr.Dataframe(
@@ -885,11 +944,11 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
         predict_btn.click(
             fn=predict_full,
             inputs=[text_input],
-            outputs=[pred_html, rationale_html, heatmap_html, attn_table, prob_table, conf_plot],
+            outputs=[pred_html, rationale_html, alternatives_html, heatmap_html, attn_table, prob_table, conf_plot],
         )
         clear_btn.click(
-            lambda: ("", "", "", pd.DataFrame(columns=["token", "attention_weight"]), pd.DataFrame(columns=["emotion", "probability_%"]), None),
-            outputs=[pred_html, rationale_html, heatmap_html, attn_table, prob_table, conf_plot],
+            lambda: ("", "", "", "", pd.DataFrame(columns=["token", "attention_weight"]), pd.DataFrame(columns=["emotion", "probability_%"]), None),
+            outputs=[pred_html, rationale_html, alternatives_html, heatmap_html, attn_table, prob_table, conf_plot],
         )
 
     with gr.Tab("Batch Analysis"):
@@ -902,10 +961,12 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
         batch_btn = gr.Button("Run Batch Analysis")
         batch_table = gr.Dataframe(label="Batch Predictions", interactive=False)
         batch_plot = gr.Plot(label="Batch Distribution")
+        batch_csv_file = gr.File(label="Batch CSV Export", interactive=False)
+        batch_json_file = gr.File(label="Batch JSON Export", interactive=False)
         batch_btn.click(
             fn=analyze_batch,
             inputs=[batch_file],
-            outputs=[batch_table, batch_plot],
+            outputs=[batch_table, batch_plot, batch_csv_file, batch_json_file],
         )
 
 if __name__ == "__main__":

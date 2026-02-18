@@ -27,6 +27,8 @@ BATCH_SIZE = int(os.getenv("BATCH_SIZE", "32"))
 EPOCHS = int(os.getenv("EPOCHS", "6"))
 SAMPLE_TRAIN = int(os.getenv("SAMPLE_TRAIN", "18000"))
 SAMPLE_VAL = int(os.getenv("SAMPLE_VAL", "4000"))
+USE_FOCAL_LOSS = os.getenv("USE_FOCAL_LOSS", "0") == "1"
+FOCAL_GAMMA = float(os.getenv("FOCAL_GAMMA", "2.0"))
 
 TARGET_LABELS = [
     "anger",
@@ -74,10 +76,23 @@ LABEL_TO_ID = {label: i for i, label in enumerate(TARGET_LABELS)}
 
 def normalize_social_text(text: str) -> str:
     text = str(text).lower()
+    sarcasm_patterns = ["yeah right", "as if", "sure...", "/s", "lol sure", "totally great"]
+    fear_words = {"terrified", "scared", "horrifying", "frightening", "panic", "afraid"}
+    disgust_words = {"disgusting", "repulsive", "revolting", "gross", "nasty"}
+    surprise_words = {"unexpected", "shocking", "unbelievable", "omg", "wow"}
+
     text = re.sub(r"http\\S+|www\\.\\S+", " URL ", text)
     text = re.sub(r"@\\w+", " USER ", text)
     text = re.sub(r"#(\\w+)", r"\\1", text)
     text = re.sub(r"\\s+", " ", text).strip()
+    if any(p in text for p in sarcasm_patterns):
+        text += " sarcasm_cue"
+    if any(w in text for w in fear_words):
+        text += " fear_cue"
+    if any(w in text for w in disgust_words):
+        text += " disgust_cue"
+    if any(w in text for w in surprise_words):
+        text += " surprise_cue"
     return text
 
 
@@ -130,9 +145,14 @@ def build_model(num_classes: int, vocab_size: int):
     outputs = tf.keras.layers.Dense(num_classes, activation="softmax", name="dense_1")(x)
 
     model = tf.keras.Model(inputs=inputs, outputs=outputs, name="attention_bilstm")
+    if USE_FOCAL_LOSS:
+        loss_fn = tf.keras.losses.SparseCategoricalFocalCrossentropy(gamma=FOCAL_GAMMA)
+    else:
+        loss_fn = "sparse_categorical_crossentropy"
+
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
-        loss="sparse_categorical_crossentropy",
+        loss=loss_fn,
         metrics=["accuracy"],
     )
     return model
@@ -185,6 +205,8 @@ def main():
         y=y_train,
     )
     class_weight_map = {int(i): float(w) for i, w in enumerate(class_weights)}
+    print("Class weights:", class_weight_map)
+    print("Loss:", "SparseCategoricalFocalCrossentropy" if USE_FOCAL_LOSS else "sparse_categorical_crossentropy")
 
     callbacks = [
         tf.keras.callbacks.EarlyStopping(
