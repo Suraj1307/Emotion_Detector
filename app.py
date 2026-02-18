@@ -843,6 +843,7 @@ def write_batch_exports(out_df: pd.DataFrame):
 
 def load_training_history():
     candidates = [
+        ROOT / "training_history.json",
         ROOT / "emotion-model" / "training_history.json",
         ROOT / "research" / "outputs" / "training_history.json",
     ]
@@ -966,12 +967,13 @@ SAMPLE_BATCH_FILE = ensure_sample_batch_file()
 
 with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
     gr.Markdown("## Emotion Classification in Social Media Using Attention-Based BiLSTM")
+    gr.Markdown("### Training Performance")
+    train_curves_plot = gr.Plot(
+        label="Model Accuracy and Model Loss",
+        value=build_training_curves_plot(),
+    )
     with gr.Accordion("Model Diagnostics & Documentation", open=False):
         gr.Markdown(build_model_info_md())
-        train_curves_plot = gr.Plot(
-            label="Training Performance: Accuracy and Loss",
-            value=build_training_curves_plot(),
-        )
 
     with gr.Tab("Single Prediction"):
         gr.Markdown("### Model Predictions")
