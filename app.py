@@ -602,6 +602,7 @@ def build_rationale_html(emotion: str, confidence: float, prob_df: pd.DataFrame,
         f"<b>Primary vs Next:</b> {emotion.title()} ({round(confidence,2)}%)"
         + (f" vs {alt}<br>" if alt else "<br>")
         + f"<b>Top Attention Tokens:</b> {html.escape(top_tokens)}"
+        "<br><span style='color:#6b7280'>Confidence bands: High (>=90), Moderate (70-89), Low (50-69), Very Low (<50).</span>"
         f"</div>"
     )
 
@@ -656,6 +657,40 @@ def build_alternative_emotions_html(prob_df: pd.DataFrame) -> str:
         + "".join(rows)
         + "</div>"
     )
+
+
+def estimate_token_count(text: str) -> int:
+    txt = (text or "").strip()
+    if not txt:
+        return 0
+    normalized = normalize_social_text(txt)
+    try:
+        if hasattr(tokenizer, "texts_to_sequences"):
+            return len(tokenizer.texts_to_sequences([normalized])[0])
+        enc = tokenizer(
+            [normalized],
+            truncation=False,
+            padding=False,
+            return_tensors=None,
+        )
+        ids = enc.get("input_ids", [[]])[0]
+        return len(ids)
+    except Exception:
+        return len(normalized.split())
+
+
+def input_feedback(text: str) -> str:
+    txt = text or ""
+    chars = len(txt)
+    toks = estimate_token_count(txt)
+    warn = ""
+    if chars > MAX_INPUT_CHARS:
+        warn = f"<span style='color:#b91c1c'>Input exceeds {MAX_INPUT_CHARS} characters.</span>"
+    elif toks > MAX_LEN:
+        warn = f"<span style='color:#b45309'>Input exceeds {MAX_LEN} tokens; it will be truncated.</span>"
+    else:
+        warn = "<span style='color:#6b7280'>Input length is within model limits.</span>"
+    return f"<div style='font-size:13px'>Chars: <b>{chars}</b> | Tokens: <b>{toks}</b> | {warn}</div>"
 
 
 def ensure_sample_batch_file() -> str:
@@ -790,6 +825,7 @@ def predict_full(text):
         return f"Please keep input under {MAX_INPUT_CHARS} characters.", "", "", "", pd.DataFrame(columns=["token", "attention_weight"]), pd.DataFrame(columns=["emotion", "probability_%"]), None
 
     normalized = normalize_social_text(text.strip())
+    token_len = estimate_token_count(text.strip())
     model_inputs = _build_model_inputs([normalized], model, tokenizer, MAX_LEN)
 
     t0 = time.perf_counter()
@@ -824,6 +860,12 @@ def predict_full(text):
     ).sort_values("probability_%", ascending=False)
     alternatives_html = build_alternative_emotions_html(prob_df)
     rationale_html = build_rationale_html(emotion, confidence, prob_df, attn_df)
+    if token_len > MAX_LEN:
+        rationale_html += (
+            f"<div style='margin-top:8px;color:#92400e;font-size:13px'>"
+            f"Note: input has {token_len} tokens; model uses first {MAX_LEN} tokens."
+            f"</div>"
+        )
     conf_fig = build_confidence_plot(labels, pred)
     return result, rationale_html, alternatives_html, heatmap, attn_df.head(12), prob_df, conf_fig
 
@@ -978,6 +1020,7 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
             placeholder="Enter a tweet, comment, or social media post...",
             max_lines=8,
         )
+        input_stats_html = gr.HTML(value=input_feedback(""), label="Input Stats")
         gr.Examples(
             examples=EXAMPLE_TEXTS,
             inputs=[text_input],
@@ -1013,9 +1056,14 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
             inputs=[text_input],
             outputs=[pred_html, rationale_html, alternatives_html, heatmap_html, attn_table, prob_table, conf_plot],
         )
+        text_input.change(
+            fn=input_feedback,
+            inputs=[text_input],
+            outputs=[input_stats_html],
+        )
         clear_btn.click(
-            lambda: ("", "", "", "", pd.DataFrame(columns=["token", "attention_weight"]), pd.DataFrame(columns=["emotion", "probability_%"]), None),
-            outputs=[pred_html, rationale_html, alternatives_html, heatmap_html, attn_table, prob_table, conf_plot],
+            lambda: ("", "", "", "", pd.DataFrame(columns=["token", "attention_weight"]), pd.DataFrame(columns=["emotion", "probability_%"]), None, input_feedback("")),
+            outputs=[pred_html, rationale_html, alternatives_html, heatmap_html, attn_table, prob_table, conf_plot, input_stats_html],
         )
 
     with gr.Tab("Batch Analysis"):

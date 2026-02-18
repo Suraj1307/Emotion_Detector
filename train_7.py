@@ -27,8 +27,10 @@ BATCH_SIZE = int(os.getenv("BATCH_SIZE", "32"))
 EPOCHS = int(os.getenv("EPOCHS", "6"))
 SAMPLE_TRAIN = int(os.getenv("SAMPLE_TRAIN", "18000"))
 SAMPLE_VAL = int(os.getenv("SAMPLE_VAL", "4000"))
-USE_FOCAL_LOSS = os.getenv("USE_FOCAL_LOSS", "0") == "1"
+USE_FOCAL_LOSS = os.getenv("USE_FOCAL_LOSS", "1") == "1"
 FOCAL_GAMMA = float(os.getenv("FOCAL_GAMMA", "2.0"))
+OVERSAMPLE_MINORITY = os.getenv("OVERSAMPLE_MINORITY", "1") == "1"
+MINORITY_TARGET_RATIO = float(os.getenv("MINORITY_TARGET_RATIO", "0.30"))
 
 TARGET_LABELS = [
     "anger",
@@ -128,6 +130,28 @@ def load_csv(path: Path):
     return df[["text", "label_id"]]
 
 
+def oversample_minority(df: pd.DataFrame, label_col: str) -> pd.DataFrame:
+    if not OVERSAMPLE_MINORITY:
+        return df
+    counts = df[label_col].value_counts()
+    if counts.empty:
+        return df
+    max_count = int(counts.max())
+    target_min = max(1, int(max_count * MINORITY_TARGET_RATIO))
+
+    parts = [df]
+    for lbl, cnt in counts.items():
+        if cnt >= target_min:
+            continue
+        need = target_min - int(cnt)
+        subset = df[df[label_col] == lbl]
+        if subset.empty:
+            continue
+        parts.append(subset.sample(need, replace=True, random_state=42))
+    out = pd.concat(parts, ignore_index=True)
+    return out.sample(frac=1.0, random_state=42).reset_index(drop=True)
+
+
 def build_model(num_classes: int, vocab_size: int):
     inputs = tf.keras.Input(shape=(MAX_LEN,), dtype="int32", name="input_layer")
     x = tf.keras.layers.Embedding(
@@ -146,7 +170,15 @@ def build_model(num_classes: int, vocab_size: int):
 
     model = tf.keras.Model(inputs=inputs, outputs=outputs, name="attention_bilstm")
     if USE_FOCAL_LOSS:
-        loss_fn = tf.keras.losses.SparseCategoricalFocalCrossentropy(gamma=FOCAL_GAMMA)
+        def sparse_focal_loss(y_true, y_pred):
+            y_true_i = tf.cast(tf.reshape(y_true, [-1]), tf.int32)
+            y_onehot = tf.one_hot(y_true_i, depth=num_classes)
+            y_pred_clipped = tf.clip_by_value(y_pred, 1e-7, 1.0 - 1e-7)
+            ce = -tf.reduce_sum(y_onehot * tf.math.log(y_pred_clipped), axis=-1)
+            p_t = tf.reduce_sum(y_onehot * y_pred_clipped, axis=-1)
+            focal = tf.pow(1.0 - p_t, FOCAL_GAMMA) * ce
+            return tf.reduce_mean(focal)
+        loss_fn = sparse_focal_loss
     else:
         loss_fn = "sparse_categorical_crossentropy"
 
@@ -171,6 +203,7 @@ def main():
 
     train_df["label"] = train_df["label_id"].map(lambda i: GO_TO_7[id_to_label[i]])
     val_df["label"] = val_df["label_id"].map(lambda i: GO_TO_7[id_to_label[i]])
+    train_df = oversample_minority(train_df, "label")
 
     if SAMPLE_TRAIN > 0 and len(train_df) > SAMPLE_TRAIN:
         train_df = train_df.sample(SAMPLE_TRAIN, random_state=42).reset_index(drop=True)
@@ -213,6 +246,13 @@ def main():
             monitor="val_loss",
             patience=2,
             restore_best_weights=True,
+        ),
+        tf.keras.callbacks.ReduceLROnPlateau(
+            monitor="val_loss",
+            factor=0.5,
+            patience=1,
+            min_lr=1e-5,
+            verbose=1,
         ),
     ]
 
