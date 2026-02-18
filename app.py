@@ -1,5 +1,6 @@
 ﻿import json
 import os
+import pickle
 from pathlib import Path
 
 import gradio as gr
@@ -111,17 +112,33 @@ def _load_tokenizer():
         "tokenizer.json",
         "data/processed/tokenizer.json",
     ]
-    tok_file = _resolve_local_or_hf(tok_candidates)
-    if not tok_file:
-        return None, "Tokenizer artifact not found locally or on HF repo."
-    try:
-        payload = _load_json(Path(tok_file))
-        if payload is None:
-            return None, "Tokenizer file exists but is unreadable or LFS pointer."
-        tok = tokenizer_from_json(json.dumps(payload))
-        return tok, f"Tokenizer loaded from: {tok_file}"
-    except Exception as e:
-        return None, f"Tokenizer load error: {type(e).__name__}: {e}"
+
+    tried = []
+
+    for candidate in tok_candidates:
+        p = Path(candidate)
+        if p.exists() and not _is_lfs_pointer(p):
+            try:
+                payload = _load_json(p)
+                if payload is None:
+                    raise ValueError("empty_or_pointer")
+                tok = tokenizer_from_json(json.dumps(payload))
+                return tok, f"Tokenizer loaded from: {p}"
+            except Exception as e:
+                tried.append(f"local:{p} -> {type(e).__name__}")
+
+    for candidate in tok_candidates:
+        try:
+            tok_file = hf_hub_download(repo_id=MODEL_REPO_ID, filename=candidate)
+            payload = _load_json(Path(tok_file))
+            if payload is None:
+                raise ValueError("empty_or_pointer")
+            tok = tokenizer_from_json(json.dumps(payload))
+            return tok, f"Tokenizer loaded from HF: {candidate}"
+        except Exception as e:
+            tried.append(f"hf:{candidate} -> {type(e).__name__}")
+
+    return None, "Tokenizer artifact not found/invalid. Tried: " + " | ".join(tried)
 
 
 def load_artifacts():
@@ -249,7 +266,7 @@ with gr.Blocks(title="Topic 7: Attention-Based BiLSTM Emotion Classification") a
         "Research graphs are loaded from `research/outputs/research_results.json`."
     )
     gr.Markdown("## Initialization Status")
-    gr.Code(INIT_STATUS, language="text")
+    gr.Textbox(value=INIT_STATUS, label="Startup Diagnostics", lines=5, interactive=False)
 
     with gr.Row():
         with gr.Column(scale=1):
@@ -282,3 +299,6 @@ with gr.Blocks(title="Topic 7: Attention-Based BiLSTM Emotion Classification") a
 
 if __name__ == "__main__":
     demo.launch()
+
+
+
