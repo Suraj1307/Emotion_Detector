@@ -216,7 +216,7 @@ def main():
         ),
     ]
 
-    model.fit(
+    history = model.fit(
         x_train,
         y_train,
         validation_data=(x_val, y_val),
@@ -231,6 +231,9 @@ def main():
     (OUT_DIR / "tokenizer.json").write_text(tokenizer.to_json(), encoding="utf-8")
     (OUT_DIR / "label_classes.json").write_text(
         json.dumps(TARGET_LABELS), encoding="utf-8"
+    )
+    (OUT_DIR / "training_history.json").write_text(
+        json.dumps(history.history, indent=2), encoding="utf-8"
     )
     print("Saved Attention-based BiLSTM emotion model artifacts to:", OUT_DIR)
 

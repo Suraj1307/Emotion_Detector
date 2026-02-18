@@ -841,6 +841,72 @@ def write_batch_exports(out_df: pd.DataFrame):
     return str(csv_path), str(json_path)
 
 
+def load_training_history():
+    candidates = [
+        ROOT / "emotion-model" / "training_history.json",
+        ROOT / "research" / "outputs" / "training_history.json",
+    ]
+    for p in candidates:
+        if p.exists():
+            try:
+                return json.loads(p.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+    for repo_id, repo_type in repo_specs():
+        try:
+            fp = hf_hub_download(
+                repo_id=repo_id,
+                filename="training_history.json",
+                repo_type=repo_type,
+            )
+            return json.loads(Path(fp).read_text(encoding="utf-8"))
+        except Exception:
+            continue
+    return None
+
+
+def build_training_curves_plot():
+    history = load_training_history()
+    fig, ax = plt.subplots(1, 2, figsize=(10, 3.6))
+
+    if not history:
+        for a in ax:
+            a.axis("off")
+            a.text(0.5, 0.5, "Training history not found.\nRetrain once to generate graphs.", ha="center", va="center")
+        fig.tight_layout()
+        return fig
+
+    acc = history.get("accuracy", [])
+    val_acc = history.get("val_accuracy", [])
+    loss = history.get("loss", [])
+    val_loss = history.get("val_loss", [])
+    n = max(len(acc), len(loss), len(val_acc), len(val_loss))
+    epochs = list(range(1, n + 1))
+
+    if acc:
+        ax[0].plot(range(1, len(acc) + 1), acc, marker="o", label="Train")
+    if val_acc:
+        ax[0].plot(range(1, len(val_acc) + 1), val_acc, marker="o", label="Validation")
+    ax[0].set_title("Model Accuracy")
+    ax[0].set_xlabel("Epoch")
+    ax[0].set_ylabel("Accuracy")
+    ax[0].grid(alpha=0.25)
+    ax[0].legend()
+
+    if loss:
+        ax[1].plot(range(1, len(loss) + 1), loss, marker="o", label="Train")
+    if val_loss:
+        ax[1].plot(range(1, len(val_loss) + 1), val_loss, marker="o", label="Validation")
+    ax[1].set_title("Model Loss")
+    ax[1].set_xlabel("Epoch")
+    ax[1].set_ylabel("Loss")
+    ax[1].grid(alpha=0.25)
+    ax[1].legend()
+
+    fig.tight_layout()
+    return fig
+
+
 def analyze_batch(file_obj):
     if INIT_ERROR:
         return pd.DataFrame({"error": [INIT_ERROR]}), None, None, None
@@ -902,6 +968,10 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
     gr.Markdown("## Emotion Classification in Social Media Using Attention-Based BiLSTM")
     with gr.Accordion("Model Diagnostics & Documentation", open=False):
         gr.Markdown(build_model_info_md())
+        train_curves_plot = gr.Plot(
+            label="Training Performance: Accuracy and Loss",
+            value=build_training_curves_plot(),
+        )
 
     with gr.Tab("Single Prediction"):
         gr.Markdown("### Model Predictions")
