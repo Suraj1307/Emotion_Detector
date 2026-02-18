@@ -67,35 +67,68 @@ LABEL_CANDIDATES = [
 ]
 
 EMOTION_COLORS = {
-    "admiration": "#4f7df3",
-    "amusement": "#e6a700",
-    "anger": "#e53e3e",
-    "annoyance": "#d97706",
-    "approval": "#16a34a",
-    "caring": "#22c55e",
-    "confusion": "#7c3aed",
-    "curiosity": "#0ea5e9",
-    "desire": "#db2777",
-    "disappointment": "#b45309",
-    "disapproval": "#a16207",
-    "disgust": "#15803d",
-    "embarrassment": "#c026d3",
-    "excitement": "#ea580c",
-    "fear": "#dc2626",
-    "gratitude": "#10b981",
-    "grief": "#7f1d1d",
-    "joy": "#16a34a",
-    "love": "#f43f5e",
-    "nervousness": "#f59e0b",
-    "optimism": "#22c55e",
-    "pride": "#0f766e",
-    "realization": "#2563eb",
-    "relief": "#22c55e",
-    "remorse": "#92400e",
-    "sadness": "#2563eb",
-    "surprise": "#8b5cf6",
-    "neutral": "#6b7280",
+    "admiration": "#4CAF50",
+    "amusement": "#9C27B0",
+    "anger": "#F44336",
+    "annoyance": "#F44336",
+    "approval": "#4CAF50",
+    "caring": "#4CAF50",
+    "confusion": "#757575",
+    "curiosity": "#2196F3",
+    "desire": "#9C27B0",
+    "disappointment": "#2196F3",
+    "disapproval": "#F44336",
+    "disgust": "#8B7355",
+    "embarrassment": "#757575",
+    "excitement": "#4CAF50",
+    "fear": "#FF9800",
+    "gratitude": "#4CAF50",
+    "grief": "#2196F3",
+    "joy": "#4CAF50",
+    "love": "#4CAF50",
+    "nervousness": "#FF9800",
+    "optimism": "#4CAF50",
+    "pride": "#4CAF50",
+    "realization": "#757575",
+    "relief": "#4CAF50",
+    "remorse": "#2196F3",
+    "sadness": "#2196F3",
+    "surprise": "#9C27B0",
+    "neutral": "#757575",
 }
+
+EMOTION_ICONS = {
+    "joy": "[JOY]",
+    "anger": "[ANGER]",
+    "sadness": "[SADNESS]",
+    "neutral": "[NEUTRAL]",
+    "surprise": "[SURPRISE]",
+    "disgust": "[DISGUST]",
+    "fear": "[FEAR]",
+}
+
+UI_CSS = """
+.gradio-container { font-size: 15px; }
+.result-card {
+  border: 1px solid #dbe3ea;
+  border-radius: 10px;
+  padding: 14px;
+  background: #ffffff;
+}
+.result-title { font-size: 13px; color: #4b5563; margin-bottom: 6px; }
+.result-main { font-size: 26px; font-weight: 700; line-height: 1.2; }
+.result-meta { margin-top: 8px; color: #6b7280; font-size: 13px; }
+.result-band {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 6px;
+  background: #eef2f7;
+  color: #374151;
+}
+"""
 
 os.environ["TF_DETERMINISTIC_OPS"] = "1"
 np.random.seed(42)
@@ -518,7 +551,7 @@ def build_attention_heatmap_html(tokens, weights):
         alpha = 0.12 + 0.58 * float(score)
         safe_tok = html.escape(tok)
         parts.append(
-            f"<span style='background:rgba(245,158,11,{alpha:.3f}); "
+            f"<span style='background:rgba(14,165,233,{alpha:.3f}); "
             f"padding:2px 4px; margin:2px; border-radius:4px; display:inline-block'>{safe_tok}</span>"
         )
     return "<div style='line-height:2'>" + "".join(parts) + "</div>"
@@ -548,6 +581,45 @@ def build_rationale_html(emotion: str, confidence: float, prob_df: pd.DataFrame,
         + f"<b>Top Attention Tokens:</b> {html.escape(top_tokens)}"
         f"</div>"
     )
+
+
+def build_primary_result_card(emotion: str, confidence: float, dt_ms: float) -> str:
+    e = emotion.lower()
+    color = EMOTION_COLORS.get(e, "#111827")
+    icon = EMOTION_ICONS.get(e, "[EMOTION]")
+    band = confidence_band(confidence)
+    width = min(100.0, max(2.0, float(confidence)))
+    return (
+        "<div class='result-card'>"
+        "<div class='result-title'>Primary Prediction</div>"
+        f"<div class='result-main' style='color:{color}'>{icon} {emotion.title()}</div>"
+        f"<div class='result-meta'>Confidence: <b>{confidence:.2f}%</b></div>"
+        f"<div style='height:9px;background:#e5e7eb;border-radius:999px;margin-top:8px;'>"
+        f"<div style='height:9px;width:{width:.2f}%;background:{color};border-radius:999px;'></div>"
+        "</div>"
+        f"<div class='result-band'>{band}</div>"
+        f"<div class='result-meta'>Inference: {dt_ms:.1f} ms</div>"
+        "</div>"
+    )
+
+
+def ensure_sample_batch_file() -> str:
+    out_path = ROOT / "research" / "outputs" / "sample_batch_input.csv"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    if not out_path.exists():
+        sample = pd.DataFrame(
+            {
+                "text": [
+                    "I am so happy and excited about this wonderful day!",
+                    "I hate this so much and I am furious.",
+                    "I feel really sad and heartbroken today.",
+                    "This was unexpected and shocking wow!",
+                    "The update is fine, nothing special.",
+                ]
+            }
+        )
+        sample.to_csv(out_path, index=False)
+    return str(out_path)
 
 
 def compute_dataset_stats_md():
@@ -672,17 +744,7 @@ def predict_full(text):
     pred_id = int(np.argmax(pred))
     emotion = label_encoder.inverse_transform([pred_id])[0]
     confidence = float(np.max(pred)) * 100
-    primary_color = EMOTION_COLORS.get(emotion.lower(), "#111827")
-
-    result = (
-        f"<div style='font-size:16px'>"
-        f"<div><b>Primary Emotion:</b> "
-        f"<span style='color:{primary_color}; font-weight:700'>{emotion.title()}</span> "
-        f"({round(confidence,2)}%)</div>"
-        f"<div style='margin-top:8px; color:#6b7280; font-size:12px'>"
-        f"Inference: {dt_ms:.1f} ms</div>"
-        f"</div>"
-    )
+    result = build_primary_result_card(emotion, confidence, dt_ms)
 
     heatmap = "<div style='color:#6b7280'>Attention layer unavailable for this model.</div>"
     attn_df = pd.DataFrame(columns=["token", "attention_weight"])
@@ -763,7 +825,9 @@ def analyze_batch(file_obj):
 # UI
 # =====================================================
 
-with gr.Blocks() as demo:
+SAMPLE_BATCH_FILE = ensure_sample_batch_file()
+
+with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
     gr.Markdown("## Emotion Classification in Social Media Using Attention-Based BiLSTM")
     gr.Markdown(
         "Phase 1: full emotion probabilities + batch analysis. "
@@ -777,27 +841,32 @@ with gr.Blocks() as demo:
         text_input = gr.Textbox(
             lines=4,
             label="Social Media Text",
-            placeholder="Type a tweet or Reddit comment...",
+            placeholder="Enter a tweet, comment, or social media post...",
             max_lines=8,
         )
         with gr.Row():
             predict_btn = gr.Button("Submit")
             clear_btn = gr.Button("Clear")
-        pred_html = gr.HTML(label="Emotion Prediction")
-        rationale_html = gr.HTML(label="Prediction Rationale")
-        gr.Markdown("### Attention Analysis")
-        heatmap_html = gr.HTML(label="Attention Heatmap")
-        attn_table = gr.Dataframe(
-            headers=["token", "attention_weight"],
-            label="Top Attention Weights",
-            interactive=False,
-        )
-        prob_table = gr.Dataframe(
-            headers=["emotion", "probability_%"],
-            label="All Emotion Probabilities",
-            interactive=False,
-        )
-        conf_plot = gr.Plot(label="Confidence Chart")
+        with gr.Row():
+            with gr.Column(scale=1):
+                pred_html = gr.HTML(label="Primary Emotion")
+                rationale_html = gr.HTML(label="Prediction Rationale")
+            with gr.Column(scale=1):
+                conf_plot = gr.Plot(label="Confidence Chart")
+                prob_table = gr.Dataframe(
+                    headers=["emotion", "probability_%"],
+                    label="All Emotion Probabilities",
+                    interactive=False,
+                )
+
+        with gr.Accordion("Detailed Analytics", open=False):
+            gr.Markdown("### Attention Analysis")
+            heatmap_html = gr.HTML(label="Attention Heatmap")
+            attn_table = gr.Dataframe(
+                headers=["token", "attention_weight"],
+                label="Top Attention Weights",
+                interactive=False,
+            )
 
         predict_btn.click(
             fn=predict_full,
@@ -810,6 +879,8 @@ with gr.Blocks() as demo:
         )
 
     with gr.Tab("Batch Analysis"):
+        gr.Markdown("Download a sample CSV to test batch mode quickly.")
+        gr.DownloadButton("Download Sample Batch CSV", value=SAMPLE_BATCH_FILE)
         batch_file = gr.File(
             label="Upload .csv (text column) or .txt (one text per line)",
             file_types=[".csv", ".txt"],
