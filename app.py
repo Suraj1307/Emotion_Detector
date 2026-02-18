@@ -967,11 +967,6 @@ SAMPLE_BATCH_FILE = ensure_sample_batch_file()
 
 with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
     gr.Markdown("## Emotion Classification in Social Media Using Attention-Based BiLSTM")
-    gr.Markdown("### Training Performance")
-    train_curves_plot = gr.Plot(
-        label="Model Accuracy and Model Loss",
-        value=build_training_curves_plot(),
-    )
     with gr.Accordion("Model Diagnostics & Documentation", open=False):
         gr.Markdown(build_model_info_md())
 
@@ -1040,6 +1035,12 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
             inputs=[batch_file],
             outputs=[batch_table, batch_plot, batch_csv_file, batch_json_file],
         )
+
+    gr.Markdown("### Training Performance")
+    train_curves_plot = gr.Plot(
+        label="Model Accuracy and Model Loss",
+        value=build_training_curves_plot(),
+    )
 
 if __name__ == "__main__":
     demo.launch(ssr_mode=False)
