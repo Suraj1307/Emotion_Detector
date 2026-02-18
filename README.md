@@ -1,6 +1,6 @@
 ---
-title: "Topic 7: Attention-Based BiLSTM Emotion Classification"
-emoji: 😄
+title: "Emotion Classification in Social Media Using Attention-Based BiLSTM"
+emoji: "💬"
 colorFrom: blue
 colorTo: indigo
 sdk: gradio
@@ -10,56 +10,28 @@ app_file: app.py
 pinned: false
 ---
 
-# Topic 7: Emotion Classification in Social Media Using Attention-Based BiLSTM
+# Emotion Classification in Social Media Using Attention-Based BiLSTM
 
-This project addresses short, noisy social media emotion classification where key
-emotional clues appear in fragmented, informal, or mixed-emotion text.
+## Problem Statement
+Emotion classification of short, noisy social media text is difficult because key emotional cues are often informal, fragmented, and mixed across emotions. Traditional classifiers miss these subtle cues.
 
-Core objective:
-- Design an attention-based BiLSTM classifier that identifies emotionally relevant words.
-- Improve recognition performance for tweets/Reddit-style text.
-- Provide interpretable outputs with research-style evaluation and visualizations.
+This project uses an attention-based BiLSTM model to:
+- detect emotion from short posts (tweets/Reddit-style text),
+- prioritize emotionally relevant words through attention,
+- improve interpretability and robustness on noisy text.
 
-Research-paper alignment:
-- Attention-enhanced sequence modeling
-- Social media text robustness focus
-- Evaluation with confusion matrix, ablations, baselines, and error analysis
+## Model + Deployment
+- Model repository: `SurajAI2025/Emotion`
+- Inference app: `app.py` (Gradio)
+- Core custom layer: `src/model.py` (`AttentionLayer`)
 
-## Research-Grade Additions
+## Training Pipeline
+- Script: `train_7.py`
+- Label mapping to 7 target emotions: anger, disgust, fear, joy, neutral, sadness, surprise
+- Sequence backbone: BiLSTM + Attention
 
-The `research/` folder includes:
+## Research Alignment
+The implementation is aligned to the paper goal of attention-driven sequence modeling for social-media emotion recognition and includes:
+- confusion-matrix style evaluation assets (`research/outputs/`)
+- report scaffolding for research presentation (`research/RESEARCH_REPORT.md`)
 
-- `research/research_suite.py`
-  - Dataset statistics
-  - Class distribution
-  - Precision/Recall/F1/Macro-F1
-  - Confusion matrix
-  - 5 misclassified examples
-  - Baseline comparison (SVM, LSTM)
-  - Ablation study (no CNN / no Attention / no BiLSTM)
-  - Inference time + model size
-  - Robustness by sequence length buckets
-  - Co-occurrence analysis (if raw multi-label data exists)
-
-- `research/RESEARCH_REPORT.md`
-  - Full research report structure with:
-    - Mathematical model formulation
-    - Multi-class vs multi-label definitions
-    - Error analysis
-    - Attention validation protocol
-    - Cross-domain protocol
-    - Hyperparameter documentation
-    - Future work
-
-## Run Research Suite
-
-```bash
-python research/research_suite.py
-```
-
-Generated outputs:
-
-- `research/outputs/research_results.json`
-- `research/outputs/research_summary.md`
-
-Use these files to populate `research/RESEARCH_REPORT.md` tables.

@@ -29,7 +29,7 @@ from src.model import AttentionLayer
 # CONFIG
 # =====================================================
 
-MODEL_REPO_ID = os.getenv("MODEL_REPO_ID", "SurajAI2025/emotion-model-7")
+MODEL_REPO_ID = os.getenv("MODEL_REPO_ID", "SurajAI2025/Emotion")
 MODEL_FILENAME = os.getenv("MODEL_FILENAME", "emotion_model_final.keras")
 MODEL_LOCAL_DIR = os.getenv("MODEL_LOCAL_DIR", "emotion-model")
 TOKENIZER_PATH_OVERRIDE = os.getenv("TOKENIZER_PATH", "").strip()
@@ -388,8 +388,11 @@ demo = gr.Interface(
         gr.HTML(label="Emotion Prediction"),
         gr.HTML(label="Attention Heatmap"),
     ],
-    title="Emotion Classification Using Attention-Based BERT-BiRNN-CNN",
-    description="Keras 3 compatible deployment.",
+    title="Emotion Classification in Social Media Using Attention-Based BiLSTM",
+    description=(
+        "Classifies short, noisy social media text and highlights emotionally relevant cues "
+        "using an attention-enabled BiLSTM pipeline."
+    ),
 )
 
 if __name__ == "__main__":
