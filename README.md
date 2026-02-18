@@ -1,5 +1,5 @@
 ---
-title: "AffectLens AI: Emotion Intelligence Studio"
+title: "Topic 7: Attention-Based BiLSTM Emotion Classification"
 emoji: 😄
 colorFrom: blue
 colorTo: indigo
@@ -10,10 +10,20 @@ app_file: app.py
 pinned: false
 ---
 
-# AffectLens AI: Emotion Intelligence Studio
+# Topic 7: Emotion Classification in Social Media Using Attention-Based BiLSTM
 
-This repository includes an attention-based BiLSTM-CNN emotion classifier and a
-research-grade evaluation pipeline.
+This project addresses short, noisy social media emotion classification where key
+emotional clues appear in fragmented, informal, or mixed-emotion text.
+
+Core objective:
+- Design an attention-based BiLSTM classifier that identifies emotionally relevant words.
+- Improve recognition performance for tweets/Reddit-style text.
+- Provide interpretable outputs with research-style evaluation and visualizations.
+
+Research-paper alignment:
+- Attention-enhanced sequence modeling
+- Social media text robustness focus
+- Evaluation with confusion matrix, ablations, baselines, and error analysis
 
 ## Research-Grade Additions
 

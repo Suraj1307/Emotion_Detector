@@ -239,17 +239,25 @@ def metrics_table_md():
     )
 
 
-with gr.Blocks(title="AffectLens AI: Emotion Intelligence Studio") as demo:
-    gr.Markdown("# AffectLens AI: Emotion Intelligence Studio")
+with gr.Blocks(title="Topic 7: Attention-Based BiLSTM Emotion Classification") as demo:
+    gr.Markdown("# Topic 7: Emotion Classification in Social Media Using Attention-Based BiLSTM")
     gr.Markdown(
-        "Prediction + research evaluation graphs from `research/outputs/research_results.json`."
+        "This dashboard targets short, noisy social media text (tweets/Reddit comments) and highlights "
+        "emotionally relevant cues via an attention-enhanced BiLSTM pipeline."
+    )
+    gr.Markdown(
+        "Research graphs are loaded from `research/outputs/research_results.json`."
     )
     gr.Markdown("## Initialization Status")
     gr.Code(INIT_STATUS, language="text")
 
     with gr.Row():
         with gr.Column(scale=1):
-            txt = gr.Textbox(label="Input Text", lines=4)
+            txt = gr.Textbox(
+                label="Input Text (short social post)",
+                lines=4,
+                placeholder="Type a tweet or Reddit-style post with informal/noisy language...",
+            )
             btn = gr.Button("Predict")
             out_main = gr.Textbox(label="Primary Prediction")
             out_top = gr.Textbox(label="Top-5 Probabilities")
