@@ -29,6 +29,11 @@ This project uses an attention-based BiLSTM model to:
 - Script: `train_7.py`
 - Label mapping to 7 target emotions: anger, disgust, fear, joy, neutral, sadness, surprise
 - Sequence backbone: BiLSTM + Attention
+- Tokenization: Keras tokenizer (`tokenizer.json`)
+- Input focus: short/noisy social text normalization (URL, @user, hashtag handling)
+
+## Attention Visualization
+- The app displays token-level attention highlighting to show emotionally relevant words.
 
 ## Research Alignment
 The implementation is aligned to the paper goal of attention-driven sequence modeling for social-media emotion recognition and includes:

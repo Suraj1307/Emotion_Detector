@@ -1,16 +1,16 @@
-﻿import ast
+import ast
 import json
 import os
+import re
 from pathlib import Path
-
-os.environ.setdefault("TF_USE_LEGACY_KERAS", "1")
 
 import numpy as np
 import pandas as pd
 import tensorflow as tf
 from datasets import load_dataset
 from sklearn.utils.class_weight import compute_class_weight
-from transformers import AutoTokenizer, TFAutoModel
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.preprocessing.text import Tokenizer
 
 from src.model import AttentionLayer
 
@@ -20,13 +20,13 @@ VAL_CSV = PROJECT_DIR / "data_validation.csv"
 OUT_DIR = PROJECT_DIR / "emotion-model"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-BERT_MODEL_NAME = os.getenv("BERT_MODEL_NAME", "bert-base-uncased")
-MAX_LEN = int(os.getenv("MAX_LEN", "64"))
-BATCH_SIZE = int(os.getenv("BATCH_SIZE", "16"))
-EPOCHS = int(os.getenv("EPOCHS", "2"))
-SAMPLE_TRAIN = int(os.getenv("SAMPLE_TRAIN", "16000"))
+MAX_LEN = int(os.getenv("MAX_LEN", "50"))
+VOCAB_SIZE = int(os.getenv("VOCAB_SIZE", "30000"))
+EMBED_DIM = int(os.getenv("EMBED_DIM", "100"))
+BATCH_SIZE = int(os.getenv("BATCH_SIZE", "32"))
+EPOCHS = int(os.getenv("EPOCHS", "6"))
+SAMPLE_TRAIN = int(os.getenv("SAMPLE_TRAIN", "18000"))
 SAMPLE_VAL = int(os.getenv("SAMPLE_VAL", "4000"))
-FREEZE_BERT = os.getenv("FREEZE_BERT", "false").lower() == "true"
 
 TARGET_LABELS = [
     "anger",
@@ -72,6 +72,15 @@ GO_TO_7 = {
 LABEL_TO_ID = {label: i for i, label in enumerate(TARGET_LABELS)}
 
 
+def normalize_social_text(text: str) -> str:
+    text = str(text).lower()
+    text = re.sub(r"http\\S+|www\\.\\S+", " URL ", text)
+    text = re.sub(r"@\\w+", " USER ", text)
+    text = re.sub(r"#(\\w+)", r"\\1", text)
+    text = re.sub(r"\\s+", " ", text).strip()
+    return text
+
+
 def parse_labels(value):
     if isinstance(value, list):
         return value
@@ -90,7 +99,6 @@ def ensure_training_csvs():
     ds = load_dataset("go_emotions")
     train_df = ds["train"].to_pandas()[["text", "labels"]]
     val_df = ds["validation"].to_pandas()[["text", "labels"]]
-
     train_df.to_csv(TRAIN_CSV, index=False)
     val_df.to_csv(VAL_CSV, index=False)
 
@@ -101,63 +109,29 @@ def load_csv(path: Path):
     df["labels_parsed"] = df["labels"].apply(parse_labels)
     df = df[df["labels_parsed"].map(len) > 0]
     df["label_id"] = df["labels_parsed"].apply(lambda x: x[0])
-    df["text"] = df["text"].astype(str)
+    df["text"] = df["text"].astype(str).map(normalize_social_text)
     return df[["text", "label_id"]]
 
 
-def encode_texts(tokenizer, texts):
-    enc = tokenizer(
-        texts,
-        truncation=True,
-        padding="max_length",
-        max_length=MAX_LEN,
-        return_tensors="np",
-    )
-    return enc["input_ids"].astype("int32"), enc["attention_mask"].astype("int32")
-
-
-def build_model(num_classes: int):
-    input_ids = tf.keras.layers.Input(
-        shape=(MAX_LEN,), dtype=tf.int32, name="input_ids"
-    )
-    attention_mask = tf.keras.layers.Input(
-        shape=(MAX_LEN,), dtype=tf.int32, name="attention_mask"
-    )
-
-    bert = TFAutoModel.from_pretrained(BERT_MODEL_NAME, name="bert_encoder")
-    bert.trainable = not FREEZE_BERT
-    bert_outputs = bert(input_ids=input_ids, attention_mask=attention_mask)
-    token_embeddings = bert_outputs.last_hidden_state
-
-    seq = tf.keras.layers.Bidirectional(
-        tf.keras.layers.LSTM(96, return_sequences=True, dropout=0.2),
+def build_model(num_classes: int, vocab_size: int):
+    inputs = tf.keras.Input(shape=(MAX_LEN,), dtype="int32", name="input_layer")
+    x = tf.keras.layers.Embedding(
+        input_dim=vocab_size,
+        output_dim=EMBED_DIM,
+        name="embedding",
+    )(inputs)
+    x = tf.keras.layers.Bidirectional(
+        tf.keras.layers.LSTM(64, return_sequences=True),
         name="bilstm_layer",
-    )(token_embeddings)
+    )(x)
+    x = AttentionLayer(name="attention_layer")(x)
+    x = tf.keras.layers.Dense(64, activation="relu", name="dense")(x)
+    x = tf.keras.layers.Dropout(0.3, name="dropout")(x)
+    outputs = tf.keras.layers.Dense(num_classes, activation="softmax", name="dense_1")(x)
 
-    attn_vec = AttentionLayer(name="attention_layer")(seq)
-
-    cnn3 = tf.keras.layers.Conv1D(
-        128, 3, activation="relu", padding="same", name="cnn_k3"
-    )(seq)
-    cnn5 = tf.keras.layers.Conv1D(
-        128, 5, activation="relu", padding="same", name="cnn_k5"
-    )(seq)
-    pool3 = tf.keras.layers.GlobalMaxPooling1D(name="pool_k3")(cnn3)
-    pool5 = tf.keras.layers.GlobalMaxPooling1D(name="pool_k5")(cnn5)
-
-    fused = tf.keras.layers.Concatenate(name="fusion_concat")([attn_vec, pool3, pool5])
-    fused = tf.keras.layers.Dense(128, activation="relu", name="fusion_dense")(fused)
-    fused = tf.keras.layers.Dropout(0.4, name="fusion_dropout")(fused)
-    outputs = tf.keras.layers.Dense(
-        num_classes, activation="softmax", name="classifier"
-    )(fused)
-
-    model = tf.keras.Model(
-        inputs={"input_ids": input_ids, "attention_mask": attention_mask},
-        outputs=outputs,
-    )
+    model = tf.keras.Model(inputs=inputs, outputs=outputs, name="attention_bilstm")
     model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=2e-5),
+        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
         loss="sparse_categorical_crossentropy",
         metrics=["accuracy"],
     )
@@ -186,11 +160,24 @@ def main():
     y_train = train_df["label"].map(LABEL_TO_ID).astype("int32").values
     y_val = val_df["label"].map(LABEL_TO_ID).astype("int32").values
 
-    tokenizer = AutoTokenizer.from_pretrained(BERT_MODEL_NAME)
-    x_train_ids, x_train_mask = encode_texts(tokenizer, train_df["text"].tolist())
-    x_val_ids, x_val_mask = encode_texts(tokenizer, val_df["text"].tolist())
+    tokenizer = Tokenizer(num_words=VOCAB_SIZE, oov_token="<OOV>")
+    tokenizer.fit_on_texts(train_df["text"].tolist())
 
-    model = build_model(num_classes=len(TARGET_LABELS))
+    x_train = pad_sequences(
+        tokenizer.texts_to_sequences(train_df["text"].tolist()),
+        maxlen=MAX_LEN,
+        padding="post",
+        truncating="post",
+    )
+    x_val = pad_sequences(
+        tokenizer.texts_to_sequences(val_df["text"].tolist()),
+        maxlen=MAX_LEN,
+        padding="post",
+        truncating="post",
+    )
+
+    vocab_size = min(VOCAB_SIZE, len(tokenizer.word_index) + 1)
+    model = build_model(num_classes=len(TARGET_LABELS), vocab_size=vocab_size)
 
     class_weights = compute_class_weight(
         class_weight="balanced",
@@ -202,31 +189,27 @@ def main():
     callbacks = [
         tf.keras.callbacks.EarlyStopping(
             monitor="val_loss",
-            patience=1,
+            patience=2,
             restore_best_weights=True,
         ),
     ]
 
     model.fit(
-        {"input_ids": x_train_ids, "attention_mask": x_train_mask},
+        x_train,
         y_train,
-        validation_data=(
-            {"input_ids": x_val_ids, "attention_mask": x_val_mask},
-            y_val,
-        ),
+        validation_data=(x_val, y_val),
         epochs=EPOCHS,
         batch_size=BATCH_SIZE,
         callbacks=callbacks,
         class_weight=class_weight_map,
-        verbose=0,
+        verbose=1,
     )
 
     model.save(OUT_DIR / "emotion_model_final.keras")
-    tokenizer.save_pretrained(OUT_DIR / "tokenizer")
+    (OUT_DIR / "tokenizer.json").write_text(tokenizer.to_json(), encoding="utf-8")
     (OUT_DIR / "label_classes.json").write_text(
         json.dumps(TARGET_LABELS), encoding="utf-8"
     )
-
     print("Saved Attention-based BiLSTM emotion model artifacts to:", OUT_DIR)
 
 
