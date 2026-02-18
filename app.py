@@ -1,334 +1,178 @@
-import csv
-import io
-import json
-import os
-import time
-from collections import Counter
-from datetime import datetime
+﻿import json
+from pathlib import Path
 
-from flask import Flask, redirect, render_template, request, send_file, url_for
+import gradio as gr
+import matplotlib.pyplot as plt
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.preprocessing.text import tokenizer_from_json
 
-try:
-    from src.predict import predict_detailed
-except ModuleNotFoundError:
-    from predict import predict_detailed
+from src.model import AttentionLayer
 
-app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "emotion-dev-secret")
-
-MAX_INPUT_CHARS = 1200
-HISTORY_LIMIT = 30
-CACHE_LIMIT = 500
-TEXT_COL_CANDIDATES = ["text", "review", "content", "comment", "message"]
-
-_PREDICTION_CACHE = {}
-_CACHE_KEYS = []
-_APP_HISTORY = []
-_LAST_BATCH_RESULT = None
+ROOT = Path(__file__).resolve().parent
+RESULTS_PATH = ROOT / "research" / "outputs" / "research_results.json"
+MODEL_PATH = ROOT / "saved_models" / "emotion_model_final.keras"
+TOKENIZER_PATH = ROOT / "data" / "processed" / "tokenizer.json"
+DEFAULT_LABELS = [
+    "anger",
+    "disgust",
+    "fear",
+    "joy",
+    "neutral",
+    "sadness",
+    "surprise",
+]
 
 
-def _is_likely_english(text):
-    letters = [ch for ch in text if ch.isalpha()]
-    if not letters:
-        return True
-    ascii_letters = [ch for ch in letters if ord(ch) < 128]
-    return (len(ascii_letters) / len(letters)) >= 0.7
+def _load_json(path: Path):
+    if not path.exists():
+        return None
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    if text.startswith("version https://git-lfs.github.com/spec/v1"):
+        return None
+    return json.loads(text)
 
 
-def _validate_text(text):
-    if not text or not text.strip():
-        return "Please enter some text before analyzing."
-    if len(text) > MAX_INPUT_CHARS:
-        return f"Input is too long. Please keep it under {MAX_INPUT_CHARS} characters."
-    return None
+def load_artifacts():
+    results = _load_json(RESULTS_PATH)
 
+    model = None
+    tokenizer = None
+    labels = list(DEFAULT_LABELS)
 
-def _cache_get(key):
-    return _PREDICTION_CACHE.get(key)
-
-
-def _cache_set(key, value):
-    if key in _PREDICTION_CACHE:
-        _PREDICTION_CACHE[key] = value
-        return
-    _PREDICTION_CACHE[key] = value
-    _CACHE_KEYS.append(key)
-    if len(_CACHE_KEYS) > CACHE_LIMIT:
-        evict = _CACHE_KEYS.pop(0)
-        _PREDICTION_CACHE.pop(evict, None)
-
-
-def _run_prediction(text, context, threshold=0.4):
-    cache_key = (text.strip().lower(), context, threshold)
-    cached = _cache_get(cache_key)
-    if cached:
-        result = dict(cached)
-        result["from_cache"] = True
-        return result
-
-    start = time.perf_counter()
-    details = predict_detailed(text, threshold=threshold, top_attention_tokens=10)
-    elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
-
-    details["all_probabilities_pct"] = [
-        {
-            "emotion": p["emotion"].upper(),
-            "value": round(p["probability"] * 100, 2),
-        }
-        for p in details["all_probabilities"]
-    ]
-    details["top_predictions"] = details["all_probabilities_pct"][:3]
-    details["processing_ms"] = elapsed_ms
-    details["context"] = context
-    details["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    details["from_cache"] = False
-
-    _cache_set(cache_key, details)
-    return details
-
-
-def _get_history():
-    return _APP_HISTORY
-
-
-def _set_history(history):
-    global _APP_HISTORY
-    _APP_HISTORY = history[-HISTORY_LIMIT:]
-
-
-def _append_history(item):
-    history = _get_history()
-    history.append(item)
-    _set_history(history)
-
-
-def _history_distribution(history):
-    counts = Counter([row["final_emotion"] for row in history if row.get("final_emotion")])
-    return [{"emotion": k, "count": v} for k, v in counts.items()]
-
-
-def _history_rows_for_export(history):
-    rows = []
-    for row in history:
-        prob_map = {p["emotion"]: p["value"] for p in row.get("all_probabilities_pct", [])}
-        rows.append(
-            {
-                "timestamp": row.get("timestamp", ""),
-                "context": row.get("context", ""),
-                "text": row.get("input_text", ""),
-                "final_emotion": row.get("final_emotion", ""),
-                "model_emotion": row.get("model_emotion", ""),
-                "confidence_pct": row.get("confidence_pct", ""),
-                "processing_ms": row.get("processing_ms", ""),
-                "from_cache": row.get("from_cache", False),
-                "probabilities": json.dumps(prob_map, ensure_ascii=False),
-            }
+    if MODEL_PATH.exists():
+        model = tf.keras.models.load_model(
+            MODEL_PATH,
+            custom_objects={"AttentionLayer": AttentionLayer},
+            compile=False,
         )
-    return rows
+
+    tok_payload = _load_json(TOKENIZER_PATH)
+    if tok_payload is not None:
+        tokenizer = tokenizer_from_json(json.dumps(tok_payload))
+
+    if results and isinstance(results.get("labels"), list) and results.get("labels"):
+        labels = results["labels"]
+
+    return results, model, tokenizer, labels
 
 
-def _batch_parse_texts(upload):
-    if not upload or not upload.filename:
-        return [], "Please choose a CSV or TXT file."
+RESULTS, MODEL, TOKENIZER, LABELS = load_artifacts()
 
-    filename = upload.filename.lower()
-    raw = upload.read()
-    if not raw:
-        return [], "Uploaded file is empty."
 
-    try:
-        decoded = raw.decode("utf-8")
-    except UnicodeDecodeError:
-        decoded = raw.decode("latin-1")
+def predict_text(text):
+    if MODEL is None:
+        return "Model not loaded.", ""
+    if TOKENIZER is None:
+        return (
+            "Tokenizer not available (likely LFS pointer). Prediction disabled.",
+            "",
+        )
+    if not text or not text.strip():
+        return "Please enter text.", ""
 
-    texts = []
-    if filename.endswith(".txt"):
-        texts = [line.strip() for line in decoded.splitlines() if line.strip()]
-    elif filename.endswith(".csv"):
-        reader = csv.DictReader(io.StringIO(decoded))
-        if reader.fieldnames is None:
-            return [], "CSV file has no header row."
+    max_len = int(MODEL.input_shape[1])
+    seq = TOKENIZER.texts_to_sequences([text.lower()])
+    x = pad_sequences(seq, maxlen=max_len, padding="post", truncating="post")
+    probs = MODEL.predict(x, verbose=0)[0]
+    pred_id = int(np.argmax(probs))
+    conf = float(np.max(probs))
 
-        lower_to_real = {h.strip().lower(): h for h in reader.fieldnames}
-        chosen = None
-        for candidate in TEXT_COL_CANDIDATES:
-            if candidate in lower_to_real:
-                chosen = lower_to_real[candidate]
-                break
-        if chosen is None:
-            chosen = reader.fieldnames[0]
-
-        for row in reader:
-            value = str(row.get(chosen, "")).strip()
-            if value:
-                texts.append(value)
+    if LABELS and pred_id < len(LABELS):
+        pred_label = LABELS[pred_id]
     else:
-        return [], "Unsupported file type. Use .csv or .txt."
+        pred_label = f"class_{pred_id}"
 
-    if not texts:
-        return [], "No valid text rows found in file."
+    top_idx = np.argsort(probs)[-5:][::-1]
+    lines = []
+    for i in top_idx:
+        lbl = LABELS[i] if LABELS and i < len(LABELS) else f"class_{i}"
+        lines.append(f"- {lbl}: {probs[i]*100:.2f}%")
 
-    return texts, None
+    summary = f"Primary Emotion: {pred_label} ({conf*100:.2f}%)"
+    details = "\n".join(lines)
+    return summary, details
 
 
-@app.route("/", methods=["GET", "POST"])
-def home():
-    result = None
-    error_message = None
-    info_message = None
-    language_warning = None
-    text = ""
-    context = "general"
-    global _LAST_BATCH_RESULT
-    batch_result = _LAST_BATCH_RESULT
+def plot_distribution():
+    fig, ax = plt.subplots(figsize=(8, 4))
+    if not RESULTS:
+        ax.text(0.5, 0.5, "research_results.json not found", ha="center", va="center")
+        ax.axis("off")
+        return fig
 
-    if request.method == "POST":
-        form_mode = request.form.get("mode", "single")
+    dist = RESULTS.get("test_distribution", [])
+    labels = [d["label"] for d in dist]
+    counts = [d["count"] for d in dist]
+    ax.bar(labels, counts)
+    ax.set_title("Test Class Distribution")
+    ax.set_ylabel("Count")
+    ax.tick_params(axis="x", rotation=45)
+    plt.tight_layout()
+    return fig
 
-        if form_mode == "batch":
-            upload = request.files.get("batch_file")
-            texts, parse_error = _batch_parse_texts(upload)
-            if parse_error:
-                error_message = parse_error
-            else:
-                rows = []
-                dist = Counter()
-                started = time.perf_counter()
-                for idx, row_text in enumerate(texts, start=1):
-                    validation_error = _validate_text(row_text)
-                    if validation_error:
-                        rows.append(
-                            {
-                                "row": idx,
-                                "text": row_text,
-                                "emotion": "SKIPPED",
-                                "confidence": 0.0,
-                                "error": validation_error,
-                            }
-                        )
-                        continue
 
-                    details = _run_prediction(row_text, context="batch", threshold=0.4)
-                    emotion = details["final_emotion"].upper()
-                    dist[emotion] += 1
-                    rows.append(
-                        {
-                            "row": idx,
-                            "text": row_text,
-                            "emotion": emotion,
-                            "confidence": round(details["confidence"] * 100, 2),
-                            "processing_ms": details["processing_ms"],
-                            "error": "",
-                        }
-                    )
+def plot_confusion_matrix():
+    fig, ax = plt.subplots(figsize=(7, 6))
+    if not RESULTS:
+        ax.text(0.5, 0.5, "research_results.json not found", ha="center", va="center")
+        ax.axis("off")
+        return fig
 
-                batch_result = {
-                    "total_rows": len(rows),
-                    "processed_rows": sum(1 for r in rows if not r["error"]),
-                    "duration_ms": round((time.perf_counter() - started) * 1000, 2),
-                    "distribution": [{"emotion": k, "count": v} for k, v in dist.items()],
-                    "rows": rows,
-                }
-                _LAST_BATCH_RESULT = batch_result
-                info_message = f"Batch analysis completed for {len(rows)} rows."
-        else:
-            text = request.form.get("text", "").strip()
-            context = request.form.get("context", "general").strip() or "general"
-            threshold = 0.4
+    cm = np.array(RESULTS.get("main_metrics", {}).get("confusion_matrix", []))
+    labels = RESULTS.get("labels", [str(i) for i in range(cm.shape[0])])
+    if cm.size == 0:
+        ax.text(0.5, 0.5, "Confusion matrix missing", ha="center", va="center")
+        ax.axis("off")
+        return fig
 
-            error_message = _validate_text(text)
-            if error_message is None:
-                if not _is_likely_english(text):
-                    language_warning = (
-                        "Input seems non-English. Model is trained mostly on English text."
-                    )
+    im = ax.imshow(cm, cmap="Blues")
+    ax.set_title("Confusion Matrix")
+    ax.set_xticks(range(len(labels)))
+    ax.set_yticks(range(len(labels)))
+    ax.set_xticklabels(labels, rotation=45, ha="right")
+    ax.set_yticklabels(labels)
+    fig.colorbar(im, ax=ax)
+    plt.tight_layout()
+    return fig
 
-                details = _run_prediction(text, context=context, threshold=threshold)
-                result = {
-                    "input_text": details["input_text"],
-                    "final_emotion": details["final_emotion"].upper(),
-                    "model_emotion": details["model_emotion"].upper(),
-                    "confidence_pct": round(details["confidence"] * 100, 2),
-                    "processing_ms": details["processing_ms"],
-                    "all_probabilities_pct": details["all_probabilities_pct"],
-                    "top_predictions": details["top_predictions"],
-                    "attention_tokens": details["attention_tokens"],
-                    "timestamp": details["timestamp"],
-                    "context": details["context"],
-                    "from_cache": details["from_cache"],
-                }
-                _append_history(result)
 
-    history = _get_history()
-    history_distribution = _history_distribution(history)
-
-    return render_template(
-        "index.html",
-        result=result,
-        error_message=error_message,
-        info_message=info_message,
-        language_warning=language_warning,
-        text=text,
-        context=context,
-        history=history,
-        history_distribution=history_distribution,
-        batch_result=batch_result,
-        suggestion_min=20,
-        suggestion_max=200,
-        max_chars=MAX_INPUT_CHARS,
+def metrics_table_md():
+    if not RESULTS:
+        return "research_results.json not available."
+    rep = RESULTS.get("main_metrics", {}).get("report", {})
+    macro = rep.get("macro avg", {})
+    return (
+        "| Metric | Value |\n"
+        "|---|---:|\n"
+        f"| Accuracy | {rep.get('accuracy', 0):.4f} |\n"
+        f"| Macro Precision | {macro.get('precision', 0):.4f} |\n"
+        f"| Macro Recall | {macro.get('recall', 0):.4f} |\n"
+        f"| Macro F1 | {macro.get('f1-score', 0):.4f} |\n"
+        f"| Inference ms/sample | {RESULTS.get('main_metrics', {}).get('inference_ms_per_sample', 0):.4f} |\n"
+        f"| Model size (MB) | {RESULTS.get('model_size_mb', 0):.3f} |"
     )
 
 
-def _export_rows_as_csv(rows, filename):
-    output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=list(rows[0].keys()) if rows else ["empty"])
-    writer.writeheader()
-    if rows:
-        writer.writerows(rows)
-    else:
-        writer.writerow({"empty": "no_data"})
+with gr.Blocks(title="Emotion Classifier + Research Graphs") as demo:
+    gr.Markdown("# Emotion Classification Dashboard")
+    gr.Markdown("Prediction + research evaluation graphs from `research/outputs/research_results.json`.")
 
-    mem = io.BytesIO(output.getvalue().encode("utf-8"))
-    mem.seek(0)
-    return send_file(
-        mem,
-        as_attachment=True,
-        download_name=filename,
-        mimetype="text/csv",
-    )
+    with gr.Row():
+        with gr.Column(scale=1):
+            txt = gr.Textbox(label="Input Text", lines=4)
+            btn = gr.Button("Predict")
+            out_main = gr.Textbox(label="Primary Prediction")
+            out_top = gr.Textbox(label="Top-5 Probabilities")
+            btn.click(predict_text, inputs=txt, outputs=[out_main, out_top])
 
+            gr.Markdown("## Core Metrics")
+            gr.Markdown(metrics_table_md())
 
-def _export_rows_as_json(rows, filename):
-    mem = io.BytesIO(json.dumps(rows, ensure_ascii=False, indent=2).encode("utf-8"))
-    mem.seek(0)
-    return send_file(
-        mem,
-        as_attachment=True,
-        download_name=filename,
-        mimetype="application/json",
-    )
-
-
-@app.route("/export/history/<fmt>")
-def export_history(fmt):
-    rows = _history_rows_for_export(_get_history())
-    if fmt == "csv":
-        return _export_rows_as_csv(rows, "emotion_history.csv")
-    if fmt == "json":
-        return _export_rows_as_json(rows, "emotion_history.json")
-    return redirect(url_for("home"))
-
-
-@app.route("/export/batch/<fmt>")
-def export_batch(fmt):
-    batch = _LAST_BATCH_RESULT or {}
-    rows = batch.get("rows", [])
-    if fmt == "csv":
-        return _export_rows_as_csv(rows, "emotion_batch_results.csv")
-    if fmt == "json":
-        return _export_rows_as_json(rows, "emotion_batch_results.json")
-    return redirect(url_for("home"))
-
+        with gr.Column(scale=1):
+            dist_plot = gr.Plot(value=plot_distribution)
+            cm_plot = gr.Plot(value=plot_confusion_matrix)
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    demo.launch()
