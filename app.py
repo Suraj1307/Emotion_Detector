@@ -63,6 +63,7 @@ EXAMPLE_TEXTS = [
     ["I am scared and nervous about what will happen next."],
     ["This behavior is disgusting and unacceptable."],
     ["The update is okay, nothing special, just normal."],
+    ["ugh this is so bad wtf smh... worst day ever :("],
 ]
 
 LABEL_CANDIDATES = [
@@ -781,6 +782,44 @@ def load_class_metrics_table():
         return pd.DataFrame(columns=["emotion", "precision", "recall", "f1_score", "support"])
 
 
+def build_class_imbalance_plot(metrics_df: pd.DataFrame):
+    fig, ax = plt.subplots(figsize=(7.5, 3.6))
+    if metrics_df is None or metrics_df.empty:
+        ax.axis("off")
+        ax.text(0.5, 0.5, "Class support not available.", ha="center", va="center")
+        fig.tight_layout()
+        return fig
+
+    df = metrics_df.copy()
+    df = df.sort_values("support", ascending=False).reset_index(drop=True)
+    colors = [EMOTION_COLORS.get(str(e).lower(), "#6b7280") for e in df["emotion"].tolist()]
+    ax.bar(df["emotion"].tolist(), df["support"].astype(int).tolist(), color=colors, alpha=0.9)
+    ax.set_title("Validation Class Support (Imbalance View)")
+    ax.set_ylabel("Support")
+    ax.tick_params(axis="x", rotation=30)
+    ax.grid(axis="y", alpha=0.2)
+    fig.tight_layout()
+    return fig
+
+
+def build_improvement_summary_md(metrics_df: pd.DataFrame) -> str:
+    if metrics_df is None or metrics_df.empty:
+        return "- Per-class metrics not found."
+    ordered = metrics_df.sort_values("f1_score", ascending=False).reset_index(drop=True)
+    best = ordered.iloc[0]
+    worst = ordered.iloc[-1]
+    low = metrics_df[metrics_df["f1_score"] < 0.45].sort_values("f1_score")
+    low_classes = ", ".join(low["emotion"].astype(str).tolist()) if len(low) else "None"
+    imbalance_ratio = float(metrics_df["support"].max()) / max(float(metrics_df["support"].min()), 1.0)
+    return (
+        "### Performance Insights\n"
+        f"- Best class: `{best['emotion']}` (F1 `{best['f1_score']:.4f}`)\n"
+        f"- Lowest class: `{worst['emotion']}` (F1 `{worst['f1_score']:.4f}`)\n"
+        f"- Priority classes (F1 < 0.45): `{low_classes}`\n"
+        f"- Class imbalance ratio (max/min support): `{imbalance_ratio:.2f}x`\n"
+    )
+
+
 def build_model_info_md():
     if model is None:
         return "Model unavailable."
@@ -1068,11 +1107,17 @@ SAMPLE_BATCH_FILE = ensure_sample_batch_file()
 with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
     gr.Markdown("## Emotion Classification in Social Media Using Attention-Based BiLSTM")
     with gr.Accordion("Model Diagnostics & Documentation", open=False):
+        class_metrics_df = load_class_metrics_table()
         gr.Markdown(build_model_info_md())
         gr.Dataframe(
-            value=load_class_metrics_table(),
+            value=class_metrics_df,
             label="Per-Class Validation Metrics",
             interactive=False,
+        )
+        gr.Markdown(build_improvement_summary_md(class_metrics_df))
+        gr.Plot(
+            label="Class Support Distribution",
+            value=build_class_imbalance_plot(class_metrics_df),
         )
 
     with gr.Tab("Single Prediction"):
