@@ -23,14 +23,16 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 MAX_LEN = int(os.getenv("MAX_LEN", "50"))
 VOCAB_SIZE = int(os.getenv("VOCAB_SIZE", "30000"))
 EMBED_DIM = int(os.getenv("EMBED_DIM", "100"))
-BATCH_SIZE = int(os.getenv("BATCH_SIZE", "32"))
-EPOCHS = int(os.getenv("EPOCHS", "6"))
-SAMPLE_TRAIN = int(os.getenv("SAMPLE_TRAIN", "18000"))
-SAMPLE_VAL = int(os.getenv("SAMPLE_VAL", "4000"))
-USE_FOCAL_LOSS = os.getenv("USE_FOCAL_LOSS", "1") == "1"
+BATCH_SIZE = int(os.getenv("BATCH_SIZE", "64"))
+EPOCHS = int(os.getenv("EPOCHS", "12"))
+SAMPLE_TRAIN = int(os.getenv("SAMPLE_TRAIN", "0"))
+SAMPLE_VAL = int(os.getenv("SAMPLE_VAL", "0"))
+USE_FOCAL_LOSS = os.getenv("USE_FOCAL_LOSS", "0") == "1"
 FOCAL_GAMMA = float(os.getenv("FOCAL_GAMMA", "2.0"))
 OVERSAMPLE_MINORITY = os.getenv("OVERSAMPLE_MINORITY", "1") == "1"
 MINORITY_TARGET_RATIO = float(os.getenv("MINORITY_TARGET_RATIO", "0.30"))
+LEARNING_RATE = float(os.getenv("LEARNING_RATE", "8e-4"))
+LABEL_SMOOTHING = float(os.getenv("LABEL_SMOOTHING", "0.05"))
 
 TARGET_LABELS = [
     "anger",
@@ -187,10 +189,15 @@ def build_model(num_classes: int, vocab_size: int):
             return tf.reduce_mean(focal)
         loss_fn = sparse_focal_loss
     else:
-        loss_fn = "sparse_categorical_crossentropy"
+        try:
+            loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(
+                label_smoothing=LABEL_SMOOTHING
+            )
+        except TypeError:
+            loss_fn = tf.keras.losses.SparseCategoricalCrossentropy()
 
     model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
+        optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE),
         loss=loss_fn,
         metrics=["accuracy"],
     )
@@ -249,15 +256,23 @@ def main():
     print("Loss:", "SparseCategoricalFocalCrossentropy" if USE_FOCAL_LOSS else "sparse_categorical_crossentropy")
 
     callbacks = [
+        tf.keras.callbacks.ModelCheckpoint(
+            filepath=str(OUT_DIR / "best_model.keras"),
+            monitor="val_accuracy",
+            mode="max",
+            save_best_only=True,
+            save_weights_only=False,
+            verbose=1,
+        ),
         tf.keras.callbacks.EarlyStopping(
             monitor="val_loss",
-            patience=2,
+            patience=3,
             restore_best_weights=True,
         ),
         tf.keras.callbacks.ReduceLROnPlateau(
             monitor="val_loss",
             factor=0.5,
-            patience=1,
+            patience=2,
             min_lr=1e-5,
             verbose=1,
         ),
@@ -274,7 +289,18 @@ def main():
         verbose=1,
     )
 
+    best_model_path = OUT_DIR / "best_model.keras"
+    if best_model_path.exists():
+        try:
+            model = tf.keras.models.load_model(
+                best_model_path, custom_objects={"AttentionLayer": AttentionLayer}
+            )
+        except Exception:
+            pass
+
     model.save(OUT_DIR / "emotion_model_final.keras")
+    best_epoch = int(np.argmax(history.history.get("val_accuracy", [0.0]))) + 1
+    history.history["best_epoch"] = [best_epoch]
     (OUT_DIR / "tokenizer.json").write_text(tokenizer.to_json(), encoding="utf-8")
     (OUT_DIR / "label_classes.json").write_text(
         json.dumps(TARGET_LABELS), encoding="utf-8"
