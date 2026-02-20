@@ -60,10 +60,10 @@ EXAMPLE_TEXTS = [
     ["I love this so much, it makes me so happy and excited."],
     ["I am so depressed and heartbroken, everything feels so sad."],
     ["This makes me so angry, I hate it."],
-    ["I am scared and nervous about what will happen next."],
-    ["This behavior is disgusting and unacceptable."],
+    ["I am very grateful and genuinely joyful today."],
+    ["This is amazing and I feel so thankful and excited."],
     ["The update is okay, nothing special, just normal."],
-    ["Wow, this is completely unexpected and surprising!"],
+    ["I feel down and empty, this day has been really hard."],
 ]
 
 LABEL_CANDIDATES = [
