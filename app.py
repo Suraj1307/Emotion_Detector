@@ -167,6 +167,10 @@ def normalize_social_text(text: str) -> str:
     fear_words = {"terrified", "scared", "horrifying", "frightening", "panic", "afraid"}
     disgust_words = {"disgusting", "repulsive", "revolting", "gross", "nasty"}
     surprise_words = {"unexpected", "shocking", "unbelievable", "omg", "wow"}
+    negative_words = {
+        "garbage", "waste", "useless", "awful", "horrible", "worst", "pathetic",
+        "trash", "broken", "bad", "disappointing", "refund", "scam", "terrible",
+    }
 
     text = re.sub(r"http\\S+|www\\.\\S+", " URL ", text)
     text = re.sub(r"@\\w+", " USER ", text)
@@ -180,6 +184,8 @@ def normalize_social_text(text: str) -> str:
         text += " disgust_cue"
     if any(w in text for w in surprise_words):
         text += " surprise_cue"
+    if any(w in text for w in negative_words):
+        text += " anger_cue disgust_cue sadness_cue"
     return text
 
 
@@ -726,6 +732,39 @@ def compute_dataset_stats_md():
     return "\n".join(stats)
 
 
+def load_eval_metrics_md():
+    candidates = [
+        ROOT / "research" / "outputs" / "final_model_metrics.json",
+        ROOT / "research" / "outputs" / "research_results.json",
+    ]
+    payload = None
+    for p in candidates:
+        if p.exists():
+            try:
+                payload = json.loads(p.read_text(encoding="utf-8"))
+                break
+            except Exception:
+                continue
+    if not payload:
+        return f"- Runtime Metrics: {METRICS_TEXT}"
+
+    acc = payload.get("accuracy")
+    mp = payload.get("macro_precision")
+    mr = payload.get("macro_recall")
+    mf1 = payload.get("macro_f1")
+    if acc is None:
+        return f"- Runtime Metrics: {METRICS_TEXT}"
+
+    parts = [f"- Accuracy: `{float(acc):.4f}`"]
+    if mp is not None:
+        parts.append(f"- Macro Precision: `{float(mp):.4f}`")
+    if mr is not None:
+        parts.append(f"- Macro Recall: `{float(mr):.4f}`")
+    if mf1 is not None:
+        parts.append(f"- Macro F1: `{float(mf1):.4f}`")
+    return "\n".join(parts)
+
+
 def build_model_info_md():
     if model is None:
         return "Model unavailable."
@@ -742,7 +781,7 @@ def build_model_info_md():
         f"- Input Shape: `{input_desc}`\n"
         f"- Parameters: `{params}`\n"
         f"- Classes: {classes}\n"
-        f"- Runtime Metrics: {METRICS_TEXT}\n\n"
+        f"{load_eval_metrics_md()}\n\n"
         "### Architecture (Current)\n"
         "- Embedding -> BiLSTM -> Attention -> Dense classifier\n"
         "- Attention is visualized at token level in predictions\n\n"

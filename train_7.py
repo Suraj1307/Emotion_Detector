@@ -82,6 +82,10 @@ def normalize_social_text(text: str) -> str:
     fear_words = {"terrified", "scared", "horrifying", "frightening", "panic", "afraid"}
     disgust_words = {"disgusting", "repulsive", "revolting", "gross", "nasty"}
     surprise_words = {"unexpected", "shocking", "unbelievable", "omg", "wow"}
+    negative_words = {
+        "garbage", "waste", "useless", "awful", "horrible", "worst", "pathetic",
+        "trash", "broken", "bad", "disappointing", "refund", "scam", "terrible",
+    }
 
     text = re.sub(r"http\\S+|www\\.\\S+", " URL ", text)
     text = re.sub(r"@\\w+", " USER ", text)
@@ -95,6 +99,9 @@ def normalize_social_text(text: str) -> str:
         text += " disgust_cue"
     if any(w in text for w in surprise_words):
         text += " surprise_cue"
+    if any(w in text for w in negative_words):
+        # Help model separate clearly negative content from neutral class.
+        text += " anger_cue disgust_cue sadness_cue"
     return text
 
 
