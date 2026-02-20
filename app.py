@@ -63,7 +63,7 @@ EXAMPLE_TEXTS = [
     ["I am very grateful and genuinely joyful today."],
     ["This is amazing and I feel so thankful and excited."],
     ["The update is okay, nothing special, just normal."],
-    ["I feel down and empty, this day has been really hard."],
+    ["I am so depressed and heartbroken, everything feels so sad."],
 ]
 
 LABEL_CANDIDATES = [
