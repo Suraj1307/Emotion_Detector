@@ -55,7 +55,7 @@ DEFAULT_TOP_K = int(os.getenv("DEFAULT_TOP_K", "5"))
 METRICS_TEXT = "Test Accuracy: 0.661 | Macro F1: 0.322 (n=4590)"
 LOW_CONF_WARN_THRESHOLD = float(os.getenv("LOW_CONF_WARN_THRESHOLD", "40"))
 UNCERTAIN_THRESHOLD = float(os.getenv("UNCERTAIN_THRESHOLD", "35"))
-EXAMPLE_TEXTS = [
+FULL_EXAMPLE_TEXTS = [
     ["I am incredibly happy and blessed, life is wonderful."],
     ["I love this so much, it makes me so happy and excited."],
     ["I am so depressed and heartbroken, everything feels so sad."],
@@ -64,6 +64,12 @@ EXAMPLE_TEXTS = [
     ["This is amazing and I feel so thankful and excited."],
     ["The update is okay, nothing special, just normal."],
     ["I am so depressed and heartbroken, everything feels so sad."],
+]
+DEMO_EXAMPLE_TEXTS = [
+    ["I am incredibly happy and blessed, life is wonderful."],
+    ["I love this so much, it makes me so happy and excited."],
+    ["I am very grateful and genuinely joyful today."],
+    ["This is amazing and I feel so thankful and excited."],
 ]
 
 LABEL_CANDIDATES = [
@@ -782,6 +788,62 @@ def load_class_metrics_table():
         return pd.DataFrame(columns=["emotion", "precision", "recall", "f1_score", "support"])
 
 
+def get_example_choices(mode: str):
+    src = DEMO_EXAMPLE_TEXTS if mode == "Demo Mode" else FULL_EXAMPLE_TEXTS
+    return [row[0] for row in src]
+
+
+def update_example_choices(mode: str):
+    choices = get_example_choices(mode)
+    value = choices[0] if choices else None
+    return gr.update(choices=choices, value=value)
+
+
+def load_selected_example(example_text: str):
+    return example_text or ""
+
+
+def build_benchmark_summary_md():
+    p = ROOT / "research" / "outputs" / "final_model_metrics.json"
+    if not p.exists():
+        return "### Benchmark Summary\n- Metrics file not found."
+    try:
+        payload = json.loads(p.read_text(encoding="utf-8"))
+        labels = payload.get("labels", [])
+        cm = np.array(payload.get("confusion_matrix", []), dtype=np.int32)
+        report = payload.get("report", {})
+        acc = float(payload.get("accuracy", 0.0))
+        macro_f1 = float(payload.get("macro_f1", 0.0))
+
+        weakest = []
+        for lbl in labels:
+            f1 = float(report.get(lbl, {}).get("f1-score", 0.0))
+            weakest.append((lbl, f1))
+        weakest.sort(key=lambda x: x[1])
+        weakest_text = ", ".join([f"{k} ({v:.3f})" for k, v in weakest[:3]])
+
+        conf_pairs = []
+        if cm.ndim == 2 and cm.size > 0 and len(labels) == cm.shape[0]:
+            for i in range(cm.shape[0]):
+                for j in range(cm.shape[1]):
+                    if i == j:
+                        continue
+                    conf_pairs.append((int(cm[i, j]), labels[i], labels[j]))
+            conf_pairs.sort(reverse=True)
+        top_conf = conf_pairs[:3]
+        conf_text = ", ".join([f"{a}->{b} ({n})" for n, a, b in top_conf]) if top_conf else "N/A"
+
+        return (
+            "### Benchmark Summary\n"
+            f"- 7-class Accuracy: `{acc:.4f}`\n"
+            f"- Macro F1: `{macro_f1:.4f}`\n"
+            f"- Weakest classes by F1: `{weakest_text}`\n"
+            f"- Top confusion pairs: `{conf_text}`\n"
+        )
+    except Exception:
+        return "### Benchmark Summary\n- Could not parse benchmark metrics."
+
+
 def build_class_imbalance_plot(metrics_df: pd.DataFrame):
     fig, ax = plt.subplots(figsize=(7.5, 3.6))
     if metrics_df is None or metrics_df.empty:
@@ -1109,6 +1171,7 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
     with gr.Accordion("Model Diagnostics & Documentation", open=False):
         class_metrics_df = load_class_metrics_table()
         gr.Markdown(build_model_info_md())
+        gr.Markdown(build_benchmark_summary_md())
         gr.Dataframe(
             value=class_metrics_df,
             label="Per-Class Validation Metrics",
@@ -1129,11 +1192,17 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
             max_lines=8,
         )
         input_stats_html = gr.HTML(value=input_feedback(""), label="Input Stats")
-        gr.Examples(
-            examples=EXAMPLE_TEXTS,
-            inputs=[text_input],
+        example_mode = gr.Radio(
+            choices=["Demo Mode", "Full Mode"],
+            value="Demo Mode",
+            label="Example Set",
+        )
+        example_selector = gr.Dropdown(
+            choices=get_example_choices("Demo Mode"),
+            value=get_example_choices("Demo Mode")[0],
             label="Quick Examples",
         )
+        load_example_btn = gr.Button("Load Example")
         with gr.Row():
             predict_btn = gr.Button("Submit")
             clear_btn = gr.Button("Clear")
@@ -1168,6 +1237,16 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
             fn=input_feedback,
             inputs=[text_input],
             outputs=[input_stats_html],
+        )
+        example_mode.change(
+            fn=update_example_choices,
+            inputs=[example_mode],
+            outputs=[example_selector],
+        )
+        load_example_btn.click(
+            fn=load_selected_example,
+            inputs=[example_selector],
+            outputs=[text_input],
         )
         clear_btn.click(
             lambda: ("", "", "", "", pd.DataFrame(columns=["token", "attention_weight"]), pd.DataFrame(columns=["emotion", "probability_%"]), None, input_feedback("")),

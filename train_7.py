@@ -38,6 +38,8 @@ MINORITY_TARGET_RATIO = float(os.getenv("MINORITY_TARGET_RATIO", "0.30"))
 LEARNING_RATE = float(os.getenv("LEARNING_RATE", "8e-4"))
 LABEL_SMOOTHING = float(os.getenv("LABEL_SMOOTHING", "0.05"))
 DROP_AMBIGUOUS = os.getenv("DROP_AMBIGUOUS", "0") == "1"
+AUGMENT_MINORITY = os.getenv("AUGMENT_MINORITY", "1") == "1"
+MINORITY_AUG_MAX_PER_CLASS = int(os.getenv("MINORITY_AUG_MAX_PER_CLASS", "1800"))
 
 TARGET_LABELS = [
     "anger",
@@ -197,6 +199,31 @@ def oversample_minority(df: pd.DataFrame, label_col: str) -> pd.DataFrame:
     return out.sample(frac=1.0, random_state=42).reset_index(drop=True)
 
 
+def augment_minority_texts(df: pd.DataFrame) -> pd.DataFrame:
+    if not AUGMENT_MINORITY or df.empty:
+        return df
+
+    cue_suffix = {
+        "fear": " fear_cue scared terrified anxious panic",
+        "disgust": " disgust_cue disgusting repulsive gross",
+        "surprise": " surprise_cue unexpected wow shocking",
+    }
+
+    parts = [df]
+    rng = np.random.RandomState(42)
+    for label, suffix in cue_suffix.items():
+        subset = df[df["label"] == label]
+        if subset.empty:
+            continue
+        n = min(len(subset), MINORITY_AUG_MAX_PER_CLASS)
+        sampled = subset.sample(n=n, replace=(len(subset) < n), random_state=42).copy()
+        sampled["text"] = sampled["text"].astype(str) + suffix
+        parts.append(sampled)
+
+    out = pd.concat(parts, ignore_index=True)
+    return out.sample(frac=1.0, random_state=rng).reset_index(drop=True)
+
+
 def build_model(num_classes: int, vocab_size: int):
     inputs = tf.keras.Input(shape=(MAX_LEN,), dtype="int32", name="input_layer")
     x = tf.keras.layers.Embedding(
@@ -257,6 +284,7 @@ def main():
     train_df = load_csv(TRAIN_CSV, id_to_label)
     val_df = load_csv(VAL_CSV, id_to_label)
     train_df = oversample_minority(train_df, "label")
+    train_df = augment_minority_texts(train_df)
 
     if SAMPLE_TRAIN > 0 and len(train_df) > SAMPLE_TRAIN:
         train_df = train_df.sample(SAMPLE_TRAIN, random_state=42).reset_index(drop=True)
