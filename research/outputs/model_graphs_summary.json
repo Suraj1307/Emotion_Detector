@@ -2,6 +2,6 @@
   "fig7_accuracy_loss": "C:\\Users\\KIIT0001\\Desktop\\Mini_Project_\\research\\outputs\\fig7_accuracy_loss.png",
   "fig8_confusion_matrix": "C:\\Users\\KIIT0001\\Desktop\\Mini_Project_\\research\\outputs\\fig8_confusion_matrix.png",
   "fig9_per_class_metrics": "C:\\Users\\KIIT0001\\Desktop\\Mini_Project_\\research\\outputs\\fig9_per_class_metrics.png",
-  "accuracy": 0.6204,
-  "macro_f1": 0.2815110517199348
+  "accuracy": 0.6216666666666667,
+  "macro_f1": 0.46561060463915255
 }

@@ -23,16 +23,21 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 MAX_LEN = int(os.getenv("MAX_LEN", "50"))
 VOCAB_SIZE = int(os.getenv("VOCAB_SIZE", "30000"))
 EMBED_DIM = int(os.getenv("EMBED_DIM", "100"))
+LSTM_UNITS = int(os.getenv("LSTM_UNITS", "64"))
+DENSE_UNITS = int(os.getenv("DENSE_UNITS", "64"))
+SPATIAL_DROPOUT = float(os.getenv("SPATIAL_DROPOUT", "0.1"))
+DROPOUT_RATE = float(os.getenv("DROPOUT_RATE", "0.3"))
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", "64"))
 EPOCHS = int(os.getenv("EPOCHS", "12"))
 SAMPLE_TRAIN = int(os.getenv("SAMPLE_TRAIN", "0"))
 SAMPLE_VAL = int(os.getenv("SAMPLE_VAL", "0"))
-USE_FOCAL_LOSS = os.getenv("USE_FOCAL_LOSS", "0") == "1"
+USE_FOCAL_LOSS = os.getenv("USE_FOCAL_LOSS", "1") == "1"
 FOCAL_GAMMA = float(os.getenv("FOCAL_GAMMA", "2.0"))
 OVERSAMPLE_MINORITY = os.getenv("OVERSAMPLE_MINORITY", "1") == "1"
 MINORITY_TARGET_RATIO = float(os.getenv("MINORITY_TARGET_RATIO", "0.30"))
 LEARNING_RATE = float(os.getenv("LEARNING_RATE", "8e-4"))
 LABEL_SMOOTHING = float(os.getenv("LABEL_SMOOTHING", "0.05"))
+DROP_AMBIGUOUS = os.getenv("DROP_AMBIGUOUS", "0") == "1"
 
 TARGET_LABELS = [
     "anger",
@@ -118,6 +123,36 @@ def parse_labels(value):
     return []
 
 
+def pick_coarse_label(label_ids, id_to_label):
+    mapped = []
+    for idx in label_ids:
+        fine = id_to_label.get(int(idx))
+        if fine is None:
+            continue
+        coarse = GO_TO_7.get(fine)
+        if coarse and coarse not in mapped:
+            mapped.append(coarse)
+
+    if not mapped:
+        return None
+    if len(mapped) == 1:
+        return mapped[0]
+
+    # Multi-label rows are noisier for single-label training.
+    mapped_wo_neutral = [m for m in mapped if m != "neutral"]
+    if len(mapped_wo_neutral) == 1:
+        return mapped_wo_neutral[0]
+    if DROP_AMBIGUOUS:
+        return None
+
+    # Fallback deterministic priority if ambiguity is allowed.
+    priority = ["anger", "disgust", "fear", "sadness", "surprise", "joy", "neutral"]
+    for p in priority:
+        if p in mapped:
+            return p
+    return mapped[0]
+
+
 def ensure_training_csvs():
     if TRAIN_CSV.exists() and VAL_CSV.exists():
         return
@@ -129,14 +164,15 @@ def ensure_training_csvs():
     val_df.to_csv(VAL_CSV, index=False)
 
 
-def load_csv(path: Path):
+def load_csv(path: Path, id_to_label):
     df = pd.read_csv(path)
     df = df[df["labels"].notna()]
     df["labels_parsed"] = df["labels"].apply(parse_labels)
     df = df[df["labels_parsed"].map(len) > 0]
-    df["label_id"] = df["labels_parsed"].apply(lambda x: x[0])
+    df["label"] = df["labels_parsed"].apply(lambda x: pick_coarse_label(x, id_to_label))
+    df = df[df["label"].notna()]
     df["text"] = df["text"].astype(str).map(normalize_social_text)
-    return df[["text", "label_id"]]
+    return df[["text", "label"]]
 
 
 def oversample_minority(df: pd.DataFrame, label_col: str) -> pd.DataFrame:
@@ -168,13 +204,19 @@ def build_model(num_classes: int, vocab_size: int):
         output_dim=EMBED_DIM,
         name="embedding",
     )(inputs)
+    x = tf.keras.layers.SpatialDropout1D(SPATIAL_DROPOUT)(x)
     x = tf.keras.layers.Bidirectional(
-        tf.keras.layers.LSTM(64, return_sequences=True),
+        tf.keras.layers.LSTM(LSTM_UNITS, return_sequences=True),
         name="bilstm_layer",
     )(x)
     x = AttentionLayer(name="attention_layer")(x)
-    x = tf.keras.layers.Dense(64, activation="relu", name="dense")(x)
-    x = tf.keras.layers.Dropout(0.3, name="dropout")(x)
+    x = tf.keras.layers.Dense(
+        DENSE_UNITS,
+        activation="relu",
+        kernel_regularizer=tf.keras.regularizers.l2(1e-4),
+        name="dense",
+    )(x)
+    x = tf.keras.layers.Dropout(DROPOUT_RATE, name="dropout")(x)
     outputs = tf.keras.layers.Dense(num_classes, activation="softmax", name="dense_1")(x)
 
     model = tf.keras.Model(inputs=inputs, outputs=outputs, name="attention_bilstm")
@@ -212,11 +254,8 @@ def main():
     label_names = ds["train"].features["labels"].feature.names
     id_to_label = {i: name for i, name in enumerate(label_names)}
 
-    train_df = load_csv(TRAIN_CSV)
-    val_df = load_csv(VAL_CSV)
-
-    train_df["label"] = train_df["label_id"].map(lambda i: GO_TO_7[id_to_label[i]])
-    val_df["label"] = val_df["label_id"].map(lambda i: GO_TO_7[id_to_label[i]])
+    train_df = load_csv(TRAIN_CSV, id_to_label)
+    val_df = load_csv(VAL_CSV, id_to_label)
     train_df = oversample_minority(train_df, "label")
 
     if SAMPLE_TRAIN > 0 and len(train_df) > SAMPLE_TRAIN:
@@ -258,15 +297,15 @@ def main():
     callbacks = [
         tf.keras.callbacks.ModelCheckpoint(
             filepath=str(OUT_DIR / "best_model.keras"),
-            monitor="val_accuracy",
-            mode="max",
+            monitor="val_loss",
+            mode="min",
             save_best_only=True,
             save_weights_only=False,
             verbose=1,
         ),
         tf.keras.callbacks.EarlyStopping(
             monitor="val_loss",
-            patience=3,
+            patience=4,
             restore_best_weights=True,
         ),
         tf.keras.callbacks.ReduceLROnPlateau(
@@ -306,6 +345,9 @@ def main():
         json.dumps(TARGET_LABELS), encoding="utf-8"
     )
     (OUT_DIR / "training_history.json").write_text(
+        json.dumps(history.history, indent=2), encoding="utf-8"
+    )
+    (PROJECT_DIR / "training_history.json").write_text(
         json.dumps(history.history, indent=2), encoding="utf-8"
     )
     print("Saved Attention-based BiLSTM emotion model artifacts to:", OUT_DIR)

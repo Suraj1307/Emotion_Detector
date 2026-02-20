@@ -1,14 +1,14 @@
 | Metric | Value | Derived From |
 |---|---:|---|
-| Accuracy | 0.6306 | Sum of diagonal / Total samples |
-| Macro F1 | 0.4928 | Mean of per-class F1 scores |
+| Accuracy | 0.6528 | Sum of diagonal / Total samples |
+| Macro F1 | 0.4746 | Mean of per-class F1 scores |
 
 | Class | Precision | Recall | F1-score |
 |---|---:|---:|---:|
-| anger | 0.4074 | 0.2495 | 0.3095 |
-| disgust | 0.3093 | 0.4918 | 0.3797 |
-| fear | 0.5484 | 0.5152 | 0.5312 |
-| joy | 0.8111 | 0.6049 | 0.6930 |
-| neutral | 0.6046 | 0.7867 | 0.6838 |
-| sadness | 0.5360 | 0.4938 | 0.5140 |
-| surprise | 0.3125 | 0.3684 | 0.3382 |
+| anger | 0.5269 | 0.1010 | 0.1696 |
+| disgust | 0.3125 | 0.3279 | 0.3200 |
+| fear | 0.5410 | 0.5000 | 0.5197 |
+| joy | 0.7812 | 0.6912 | 0.7335 |
+| neutral | 0.6136 | 0.8121 | 0.6990 |
+| sadness | 0.6258 | 0.4232 | 0.5050 |
+| surprise | 0.3209 | 0.4526 | 0.3755 |
