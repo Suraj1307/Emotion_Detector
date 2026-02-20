@@ -56,14 +56,14 @@ METRICS_TEXT = "Test Accuracy: 0.661 | Macro F1: 0.322 (n=4590)"
 LOW_CONF_WARN_THRESHOLD = float(os.getenv("LOW_CONF_WARN_THRESHOLD", "40"))
 UNCERTAIN_THRESHOLD = float(os.getenv("UNCERTAIN_THRESHOLD", "35"))
 EXAMPLE_TEXTS = [
-    ["I am so happy and excited about this wonderful day!"],
-    ["I hate this so much and I am furious right now."],
-    ["I feel really sad and heartbroken about everything."],
-    ["This is shocking and completely unexpected wow!"],
+    ["I am incredibly happy and blessed, life is wonderful."],
+    ["I love this so much, it makes me so happy and excited."],
+    ["I am so depressed and heartbroken, everything feels so sad."],
+    ["This makes me so angry, I hate it."],
     ["I am scared and nervous about what will happen next."],
     ["This behavior is disgusting and unacceptable."],
     ["The update is okay, nothing special, just normal."],
-    ["ugh this is so bad wtf smh... worst day ever :("],
+    ["Wow, this is completely unexpected and surprising!"],
 ]
 
 LABEL_CANDIDATES = [
