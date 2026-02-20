@@ -31,7 +31,6 @@ from huggingface_hub import hf_hub_download
 from sklearn.preprocessing import LabelEncoder
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.preprocessing.text import tokenizer_from_json
-from transformers import AutoTokenizer
 
 from src.model import AttentionLayer
 
@@ -55,6 +54,7 @@ MAX_INPUT_CHARS = int(os.getenv("MAX_INPUT_CHARS", "280"))
 DEFAULT_TOP_K = int(os.getenv("DEFAULT_TOP_K", "5"))
 METRICS_TEXT = "Test Accuracy: 0.661 | Macro F1: 0.322 (n=4590)"
 LOW_CONF_WARN_THRESHOLD = float(os.getenv("LOW_CONF_WARN_THRESHOLD", "40"))
+UNCERTAIN_THRESHOLD = float(os.getenv("UNCERTAIN_THRESHOLD", "35"))
 EXAMPLE_TEXTS = [
     ["I am so happy and excited about this wonderful day!"],
     ["I hate this so much and I am furious right now."],
@@ -384,7 +384,11 @@ def _load_model_compat(model_path: str):
 
 def load_tokenizer():
     if TOKENIZER_PATH_OVERRIDE and Path(TOKENIZER_PATH_OVERRIDE).exists():
-        return AutoTokenizer.from_pretrained(TOKENIZER_PATH_OVERRIDE)
+        try:
+            payload = json.loads(Path(TOKENIZER_PATH_OVERRIDE).read_text(encoding="utf-8"))
+            return tokenizer_from_json(json.dumps(payload))
+        except Exception:
+            pass
 
     tok_json = resolve_artifact(
         [
@@ -401,42 +405,13 @@ def load_tokenizer():
         except Exception:
             pass
 
-    local_dir = Path(MODEL_LOCAL_DIR) / "tokenizer"
-    if local_dir.exists():
-        return AutoTokenizer.from_pretrained(str(local_dir))
-
-    for repo_id, repo_type in repo_specs():
-        if repo_type != "model":
-            continue
-        try:
-            return AutoTokenizer.from_pretrained(repo_id)
-        except Exception:
-            continue
-
     return None
 
 
 def _build_model_inputs(texts, model, tokenizer, max_len):
-    if hasattr(tokenizer, "texts_to_sequences"):
-        seqs = tokenizer.texts_to_sequences(texts)
-        x = pad_sequences(seqs, maxlen=max_len, padding="post", truncating="post")
-        return x.astype("int32")
-
-    enc = tokenizer(
-        texts,
-        truncation=True,
-        padding="max_length",
-        max_length=max_len,
-        return_tensors="np",
-    )
-
-    if isinstance(model.input_shape, list) and len(model.input_shape) >= 2:
-        return {
-            "input_ids": enc["input_ids"].astype("int32"),
-            "attention_mask": enc["attention_mask"].astype("int32"),
-        }
-
-    return enc["input_ids"].astype("int32")
+    seqs = tokenizer.texts_to_sequences(texts)
+    x = pad_sequences(seqs, maxlen=max_len, padding="post", truncating="post")
+    return x.astype("int32")
 
 
 def initialize_pipeline() -> Tuple[keras.Model, any, LabelEncoder, int]:
@@ -544,26 +519,10 @@ def compute_attention_weights(model_inputs):
 
 
 def extract_tokens_for_attention(text: str, model_inputs, tokenizer):
-    if hasattr(tokenizer, "texts_to_sequences"):
-        seq = model_inputs[0].tolist() if isinstance(model_inputs, np.ndarray) else []
-        idx_to_word = getattr(tokenizer, "index_word", {})
-        tokens = [idx_to_word.get(int(i), "<OOV>") for i in seq if int(i) != 0]
-        return tokens
-
-    if isinstance(model_inputs, dict) and "input_ids" in model_inputs:
-        ids = model_inputs["input_ids"][0].tolist()
-        mask = model_inputs.get("attention_mask", np.ones_like(model_inputs["input_ids"]))[0]
-        tokens = []
-        for tid, m in zip(ids, mask.tolist()):
-            if int(m) == 0:
-                continue
-            tok = tokenizer.convert_ids_to_tokens([int(tid)])[0]
-            if tok in {"[CLS]", "[SEP]", "[PAD]"}:
-                continue
-            tokens.append(tok.replace("##", ""))
-        return tokens
-
-    return normalize_social_text(text).split()
+    seq = model_inputs[0].tolist() if isinstance(model_inputs, np.ndarray) else []
+    idx_to_word = getattr(tokenizer, "index_word", {})
+    tokens = [idx_to_word.get(int(i), "<OOV>") for i in seq if int(i) != 0]
+    return tokens
 
 
 def build_attention_heatmap_html(tokens, weights):
@@ -586,7 +545,40 @@ def build_attention_heatmap_html(tokens, weights):
     return "<div style='line-height:2'>" + "".join(parts) + "</div>"
 
 
+def apply_emotion_cue_adjustment(normalized_text: str, probs: np.ndarray, classes: np.ndarray) -> np.ndarray:
+    fear_words = {"terrified", "scared", "horrifying", "frightening", "panic", "afraid", "fear"}
+    disgust_words = {"disgusting", "repulsive", "revolting", "gross", "nasty", "disgust"}
+    surprise_words = {"unexpected", "shocking", "unbelievable", "omg", "wow", "surprising", "surprise"}
+    anger_words = {"furious", "angry", "hate", "rage", "unacceptable", "outrage"}
+
+    words = set(normalized_text.split())
+    boost = np.ones_like(probs, dtype=np.float32)
+    class_to_idx = {str(c).lower(): i for i, c in enumerate(classes.tolist())}
+
+    def _boost(label: str, value: float):
+        idx = class_to_idx.get(label)
+        if idx is not None:
+            boost[idx] = max(boost[idx], value)
+
+    if words & fear_words:
+        _boost("fear", 1.35)
+    if words & disgust_words:
+        _boost("disgust", 1.35)
+    if words & surprise_words:
+        _boost("surprise", 1.30)
+    if words & anger_words:
+        _boost("anger", 1.25)
+
+    adjusted = probs.astype(np.float32) * boost
+    adjusted_sum = float(np.sum(adjusted))
+    if adjusted_sum <= 0:
+        return probs
+    return adjusted / adjusted_sum
+
+
 def confidence_band(conf_pct: float) -> str:
+    if conf_pct < UNCERTAIN_THRESHOLD:
+        return "Uncertain"
     if conf_pct >= 90:
         return "High"
     if conf_pct >= 70:
@@ -608,7 +600,7 @@ def build_rationale_html(emotion: str, confidence: float, prob_df: pd.DataFrame,
         f"<b>Primary vs Next:</b> {emotion.title()} ({round(confidence,2)}%)"
         + (f" vs {alt}<br>" if alt else "<br>")
         + f"<b>Top Attention Tokens:</b> {html.escape(top_tokens)}"
-        "<br><span style='color:#6b7280'>Confidence bands: High (>=90), Moderate (70-89), Low (50-69), Very Low (<50).</span>"
+        "<br><span style='color:#6b7280'>Confidence bands: High (>=90), Moderate (70-89), Low (50-69), Very Low (35-49), Uncertain (<35).</span>"
         f"</div>"
     )
 
@@ -765,6 +757,30 @@ def load_eval_metrics_md():
     return "\n".join(parts)
 
 
+def load_class_metrics_table():
+    p = ROOT / "research" / "outputs" / "final_model_metrics.json"
+    if not p.exists():
+        return pd.DataFrame(columns=["emotion", "precision", "recall", "f1_score", "support"])
+    try:
+        payload = json.loads(p.read_text(encoding="utf-8"))
+        report = payload.get("report", {})
+        rows = []
+        for cls in payload.get("labels", []):
+            m = report.get(cls, {})
+            rows.append(
+                {
+                    "emotion": cls,
+                    "precision": round(float(m.get("precision", 0.0)), 4),
+                    "recall": round(float(m.get("recall", 0.0)), 4),
+                    "f1_score": round(float(m.get("f1-score", 0.0)), 4),
+                    "support": int(float(m.get("support", 0.0))),
+                }
+            )
+        return pd.DataFrame(rows)
+    except Exception:
+        return pd.DataFrame(columns=["emotion", "precision", "recall", "f1_score", "support"])
+
+
 def build_model_info_md():
     if model is None:
         return "Model unavailable."
@@ -806,6 +822,7 @@ def predict_and_explain(text):
 
     t0 = time.perf_counter()
     pred = model(model_inputs, training=False).numpy()[0]
+    pred = apply_emotion_cue_adjustment(normalized, pred, label_encoder.classes_)
     dt_ms = (time.perf_counter() - t0) * 1000.0
 
     pred_id = int(np.argmax(pred))
@@ -869,6 +886,7 @@ def predict_full(text):
 
     t0 = time.perf_counter()
     pred = model(model_inputs, training=False).numpy()[0]
+    pred = apply_emotion_cue_adjustment(normalized, pred, label_encoder.classes_)
     dt_ms = (time.perf_counter() - t0) * 1000.0
 
     pred_id = int(np.argmax(pred))
@@ -1016,6 +1034,7 @@ def analyze_batch(file_obj):
         normalized = normalize_social_text(t)
         model_inputs = _build_model_inputs([normalized], model, tokenizer, MAX_LEN)
         pred = model(model_inputs, training=False).numpy()[0]
+        pred = apply_emotion_cue_adjustment(normalized, pred, label_encoder.classes_)
         pred_id = int(np.argmax(pred))
         lbl = label_encoder.inverse_transform([pred_id])[0]
         conf = float(np.max(pred)) * 100.0
@@ -1050,6 +1069,11 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
     gr.Markdown("## Emotion Classification in Social Media Using Attention-Based BiLSTM")
     with gr.Accordion("Model Diagnostics & Documentation", open=False):
         gr.Markdown(build_model_info_md())
+        gr.Dataframe(
+            value=load_class_metrics_table(),
+            label="Per-Class Validation Metrics",
+            interactive=False,
+        )
 
     with gr.Tab("Single Prediction"):
         gr.Markdown("### Model Predictions")
