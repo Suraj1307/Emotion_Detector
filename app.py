@@ -1,4 +1,4 @@
-﻿import json
+import json
 import os
 import time
 import tempfile
@@ -6,6 +6,7 @@ import zipfile
 import h5py
 import html
 import re
+import ast
 from pathlib import Path
 from typing import Tuple
 
@@ -16,7 +17,7 @@ os.environ.setdefault("GRADIO_WATCHFN_SPACES", "0")
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
 os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", "-1")
-# ❌ Removed: TF_USE_LEGACY_KERAS (causes Keras3 conflict)
+# ? Removed: TF_USE_LEGACY_KERAS (causes Keras3 conflict)
 if os.environ.get("TF_USE_LEGACY_KERAS") == "1":
     os.environ["TF_USE_LEGACY_KERAS"] = "0"
 os.environ.setdefault("KERAS_BACKEND", "tensorflow")
@@ -26,9 +27,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-import keras  # ✅ Use standalone keras (v3)
+import keras  # ? Use standalone keras (v3)
 from huggingface_hub import hf_hub_download
 from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.preprocessing.text import tokenizer_from_json
 
@@ -41,10 +43,10 @@ ROOT = Path(__file__).resolve().parent
 # CONFIG
 # =====================================================
 
-MODEL_REPO_ID = os.getenv("MODEL_REPO_ID", "SurajAI2025/Emotion")
-MODEL_REPO_TYPE = os.getenv("MODEL_REPO_TYPE", "space")
-MODEL_REPO_FALLBACK_ID = os.getenv("MODEL_REPO_FALLBACK_ID", "SurajAI2025/emotion-model-7")
-MODEL_REPO_FALLBACK_TYPE = os.getenv("MODEL_REPO_FALLBACK_TYPE", "model")
+MODEL_REPO_ID = os.getenv("MODEL_REPO_ID", "SurajAI2025/emotion-model-7")
+MODEL_REPO_TYPE = os.getenv("MODEL_REPO_TYPE", "model")
+MODEL_REPO_FALLBACK_ID = os.getenv("MODEL_REPO_FALLBACK_ID", "SurajAI2025/Emotion")
+MODEL_REPO_FALLBACK_TYPE = os.getenv("MODEL_REPO_FALLBACK_TYPE", "space")
 MODEL_FILENAME = os.getenv("MODEL_FILENAME", "emotion_model_final.keras")
 MODEL_LOCAL_DIR = os.getenv("MODEL_LOCAL_DIR", "emotion-model")
 TOKENIZER_PATH_OVERRIDE = os.getenv("TOKENIZER_PATH", "").strip()
@@ -115,25 +117,33 @@ EMOTION_COLORS = {
 }
 
 EMOTION_ICONS = {
-    "joy": "[JOY]",
-    "anger": "[ANGER]",
-    "sadness": "[SADNESS]",
-    "neutral": "[NEUTRAL]",
-    "surprise": "[SURPRISE]",
-    "disgust": "[DISGUST]",
-    "fear": "[FEAR]",
+    "joy": "&#128522;",
+    "anger": "&#128544;",
+    "sadness": "&#128546;",
+    "neutral": "&#128528;",
+    "surprise": "&#128562;",
+    "disgust": "&#129314;",
+    "fear": "&#128552;",
+    "love": "&#10084;&#65039;",
+    "gratitude": "&#128591;",
+    "amusement": "&#128516;",
 }
 
 UI_CSS = """
-.gradio-container { font-size: 15px; }
+.gradio-container {
+  font-size: 15px;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+}
 .result-card {
   border: 1px solid #dbe3ea;
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 14px;
   background: #ffffff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+  animation: cardFade 220ms ease-out;
 }
-.result-title { font-size: 13px; color: #4b5563; margin-bottom: 6px; }
-.result-main { font-size: 26px; font-weight: 700; line-height: 1.2; }
+.result-title { font-size: 13px; color: #4b5563; margin-bottom: 6px; font-weight: 600; }
+.result-main { font-size: 32px; font-weight: 800; line-height: 1.15; }
 .result-meta { margin-top: 8px; color: #6b7280; font-size: 13px; }
 .result-band {
   display: inline-block;
@@ -141,9 +151,50 @@ UI_CSS = """
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
-  margin-top: 6px;
+  margin-top: 8px;
   background: #eef2f7;
   color: #374151;
+}
+.conf-meter {
+  margin-top: 10px;
+  border-radius: 10px;
+  border: 1px solid #dbe3ea;
+  padding: 8px;
+  background: #f8fafc;
+}
+.conf-meter-track {
+  height: 10px;
+  background: #e5e7eb;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.conf-meter-fill {
+  height: 10px;
+  border-radius: 999px;
+  transition: width 320ms ease-out;
+}
+.alt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.help-chip {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+  font-size: 11px;
+}
+@keyframes cardFade {
+  from { opacity: 0; transform: translateY(4px) scale(0.995); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 """
 
@@ -601,23 +652,29 @@ def build_rationale_html(emotion: str, confidence: float, prob_df: pd.DataFrame,
     if len(top2) > 1:
         alt = f"{top2[1]['emotion'].title()} ({top2[1]['probability_%']}%)"
     top_tokens = ", ".join(attn_df["token"].head(5).astype(str).tolist()) if len(attn_df) else "N/A"
+    band = confidence_band(confidence)
     return (
         f"<div style='font-size:14px'>"
-        f"<b>Confidence Band:</b> {confidence_band(confidence)}<br>"
+        f"<b>Confidence Band:</b> {band}<span class='help-chip' title='Band thresholds are based on top-class probability.'>?</span><br>"
         f"<b>Primary vs Next:</b> {emotion.title()} ({round(confidence,2)}%)"
         + (f" vs {alt}<br>" if alt else "<br>")
         + f"<b>Top Attention Tokens:</b> {html.escape(top_tokens)}"
-        "<br><span style='color:#6b7280'>Confidence bands: High (>=90), Moderate (70-89), Low (50-69), Very Low (35-49), Uncertain (<35).</span>"
-        f"</div>"
+        + "<span class='help-chip' title='These tokens had the highest attention weights and influenced the model most.'>?</span>"
+        + "<br><span style='color:#6b7280'>Confidence bands: High (>=90), Moderate (70-89), Low (50-69), Very Low (35-49), Uncertain (<35).</span>"
+        + f"</div>"
     )
 
 
 def build_primary_result_card(emotion: str, confidence: float, dt_ms: float) -> str:
     e = emotion.lower()
     color = EMOTION_COLORS.get(e, "#111827")
-    icon = EMOTION_ICONS.get(e, "[EMOTION]")
+    icon = EMOTION_ICONS.get(e, "&#128578;")
     band = confidence_band(confidence)
     width = min(100.0, max(2.0, float(confidence)))
+    intensity = "Strong" if confidence >= 80 else "Moderate" if confidence >= 60 else "Weak"
+    band_bg = "#dcfce7" if band == "High" else "#fef3c7" if band in {"Moderate", "Low"} else "#fee2e2"
+    band_fg = "#166534" if band == "High" else "#92400e" if band in {"Moderate", "Low"} else "#991b1b"
+
     warning_html = ""
     if confidence < LOW_CONF_WARN_THRESHOLD:
         warning_html = (
@@ -631,11 +688,14 @@ def build_primary_result_card(emotion: str, confidence: float, dt_ms: float) -> 
         "<div class='result-card'>"
         "<div class='result-title'>Primary Prediction</div>"
         f"<div class='result-main' style='color:{color}'>{icon} {emotion.title()}</div>"
-        f"<div class='result-meta'>Confidence: <b>{confidence:.2f}%</b></div>"
-        f"<div style='height:9px;background:#e5e7eb;border-radius:999px;margin-top:8px;'>"
-        f"<div style='height:9px;width:{width:.2f}%;background:{color};border-radius:999px;'></div>"
+        f"<div class='result-meta'>Confidence: <b>{confidence:.2f}%</b> | Intensity: <b>{intensity}</b></div>"
+        "<div class='conf-meter'>"
+        f"<div style='font-size:12px;color:#475569;margin-bottom:6px;'>Confidence Meter</div>"
+        "<div class='conf-meter-track'>"
+        f"<div class='conf-meter-fill' style='width:{width:.2f}%;background:{color};'></div>"
         "</div>"
-        f"<div class='result-band'>{band}</div>"
+        "</div>"
+        f"<div class='result-band' style='background:{band_bg};color:{band_fg};'>{band}</div>"
         f"<div class='result-meta'>Inference: {dt_ms:.1f} ms</div>"
         f"{warning_html}"
         "</div>"
@@ -650,10 +710,12 @@ def build_alternative_emotions_html(prob_df: pd.DataFrame) -> str:
     for i, row in enumerate(top3, start=1):
         emo = str(row["emotion"]).lower()
         color = EMOTION_COLORS.get(emo, "#6b7280")
+        icon = EMOTION_ICONS.get(emo, "&#128578;")
         rows.append(
             f"<div style='margin:6px 0;'>"
             f"<span style='display:inline-block;width:20px;color:#6b7280;'>{i}.</span> "
-            f"<span style='color:{color};font-weight:700'>{emo.title()}</span> "
+            f"<span class='alt-chip' style='background:{color}1a;color:{color};border:1px solid {color}55;'>"
+            f"{icon} {emo.title()}</span> "
             f"<span style='color:#374151'>({row['probability_%']}%)</span></div>"
         )
     return (
@@ -688,6 +750,11 @@ def input_feedback(text: str) -> str:
     txt = text or ""
     chars = len(txt)
     toks = estimate_token_count(txt)
+    char_color = "#059669"
+    if chars > int(MAX_INPUT_CHARS * 0.85):
+        char_color = "#b45309"
+    if chars > MAX_INPUT_CHARS:
+        char_color = "#b91c1c"
     warn = ""
     if chars > MAX_INPUT_CHARS:
         warn = f"<span style='color:#b91c1c'>Input exceeds {MAX_INPUT_CHARS} characters.</span>"
@@ -695,7 +762,7 @@ def input_feedback(text: str) -> str:
         warn = f"<span style='color:#b45309'>Input exceeds {MAX_LEN} tokens; it will be truncated.</span>"
     else:
         warn = "<span style='color:#6b7280'>Input length is within model limits.</span>"
-    return f"<div style='font-size:13px'>Chars: <b>{chars}</b> | Tokens: <b>{toks}</b> | {warn}</div>"
+    return f"<div style='font-size:13px'>Chars: <b style='color:{char_color}'>{chars}</b> | Tokens: <b>{toks}</b> | {warn}</div>"
 
 
 def ensure_sample_batch_file() -> str:
@@ -973,13 +1040,13 @@ def build_confidence_plot(labels, probs):
 def predict_full(text):
     if INIT_ERROR:
         msg = "Setup Error:\n" + INIT_ERROR
-        return msg, "", "", "", pd.DataFrame(columns=["token", "attention_weight"]), pd.DataFrame(columns=["emotion", "probability_%"]), None
+        return msg, "", "", "", pd.DataFrame(columns=["token", "attention_weight"]), pd.DataFrame(columns=["emotion", "probability_%"]), None, ""
 
     if not text or not text.strip():
-        return "Please enter some text.", "", "", "", pd.DataFrame(columns=["token", "attention_weight"]), pd.DataFrame(columns=["emotion", "probability_%"]), None
+        return "Please enter some text.", "", "", "", pd.DataFrame(columns=["token", "attention_weight"]), pd.DataFrame(columns=["emotion", "probability_%"]), None, ""
 
     if len(text) > MAX_INPUT_CHARS:
-        return f"Please keep input under {MAX_INPUT_CHARS} characters.", "", "", "", pd.DataFrame(columns=["token", "attention_weight"]), pd.DataFrame(columns=["emotion", "probability_%"]), None
+        return f"Please keep input under {MAX_INPUT_CHARS} characters.", "", "", "", pd.DataFrame(columns=["token", "attention_weight"]), pd.DataFrame(columns=["emotion", "probability_%"]), None, ""
 
     normalized = normalize_social_text(text.strip())
     token_len = estimate_token_count(text.strip())
@@ -1025,7 +1092,8 @@ def predict_full(text):
             f"</div>"
         )
     conf_fig = build_confidence_plot(labels, pred)
-    return result, rationale_html, alternatives_html, heatmap, attn_df.head(12), prob_df, conf_fig
+    copy_summary = f"Primary Emotion: {emotion.title()} ({confidence:.2f}%) | Confidence Band: {confidence_band(confidence)} | Inference: {dt_ms:.1f} ms"
+    return result, rationale_html, alternatives_html, heatmap, attn_df.head(12), prob_df, conf_fig, copy_summary
 
 
 def write_batch_exports(out_df: pd.DataFrame):
@@ -1042,6 +1110,20 @@ def write_batch_exports(out_df: pd.DataFrame):
 
 
 def load_training_history():
+    for repo_id, repo_type in repo_specs():
+        try:
+            fp = hf_hub_download(
+                repo_id=repo_id,
+                filename="training_history.json",
+                repo_type=repo_type,
+                revision="main",
+                force_download=True,
+                local_files_only=False,
+            )
+            return json.loads(Path(fp).read_text(encoding="utf-8"))
+        except Exception:
+            continue
+
     candidates = [
         ROOT / "training_history.json",
         ROOT / "emotion-model" / "training_history.json",
@@ -1053,16 +1135,6 @@ def load_training_history():
                 return json.loads(p.read_text(encoding="utf-8"))
             except Exception:
                 continue
-    for repo_id, repo_type in repo_specs():
-        try:
-            fp = hf_hub_download(
-                repo_id=repo_id,
-                filename="training_history.json",
-                repo_type=repo_type,
-            )
-            return json.loads(Path(fp).read_text(encoding="utf-8"))
-        except Exception:
-            continue
     return None
 
 
@@ -1108,16 +1180,16 @@ def build_training_curves_plot():
     return fig
 
 
-def analyze_batch(file_obj):
+def analyze_batch(file_obj, progress=gr.Progress()):
     if INIT_ERROR:
-        return pd.DataFrame({"error": [INIT_ERROR]}), None, None, None
+        return pd.DataFrame({"error": [INIT_ERROR]}), None, None, None, "<div style='color:#b91c1c'>Batch analysis unavailable due to setup error.</div>"
     if file_obj is None:
-        return pd.DataFrame(columns=["text", "prediction", "confidence_%"]), None, None, None
+        return pd.DataFrame(columns=["text", "prediction", "confidence_%"]), None, None, None, "<div style='color:#6b7280'>Upload a batch file to begin.</div>"
 
     file_path = file_obj.name if hasattr(file_obj, "name") else str(file_obj)
     path = Path(file_path)
     if not path.exists():
-        return pd.DataFrame({"error": ["Uploaded file not found."]}), None, None, None
+        return pd.DataFrame({"error": ["Uploaded file not found."]}), None, None, None, "<div style='color:#b91c1c'>Uploaded file not found.</div>"
 
     try:
         if path.suffix.lower() == ".csv":
@@ -1127,37 +1199,390 @@ def analyze_batch(file_obj):
         else:
             texts = [line.strip() for line in path.read_text(encoding="utf-8", errors="ignore").splitlines() if line.strip()]
     except Exception as e:
-        return pd.DataFrame({"error": [f"Failed to read file: {e}"]}), None, None, None
+        return pd.DataFrame({"error": [f"Failed to read file: {e}"]}), None, None, None, f"<div style='color:#b91c1c'>Failed to read file: {html.escape(str(e))}</div>"
 
     rows = []
     label_counts = {}
-    for t in texts:
+    timings_ms = []
+    total = max(len(texts), 1)
+    progress(0, desc="Starting batch inference...")
+    for i, t in enumerate(texts):
+        t0 = time.perf_counter()
         normalized = normalize_social_text(t)
         model_inputs = _build_model_inputs([normalized], model, tokenizer, MAX_LEN)
         pred = model(model_inputs, training=False).numpy()[0]
         pred = apply_emotion_cue_adjustment(normalized, pred, label_encoder.classes_)
+        dt_ms = (time.perf_counter() - t0) * 1000.0
         pred_id = int(np.argmax(pred))
         lbl = label_encoder.inverse_transform([pred_id])[0]
         conf = float(np.max(pred)) * 100.0
         rows.append({"text": t, "prediction": lbl, "confidence_%": round(conf, 2)})
         label_counts[lbl] = label_counts.get(lbl, 0) + 1
+        timings_ms.append(dt_ms)
+        progress((i + 1) / total, desc=f"Analyzed {i + 1}/{total} texts")
 
     out_df = pd.DataFrame(rows)
     if not label_counts:
         csv_path, json_path = write_batch_exports(out_df)
-        return out_df, None, csv_path, json_path
+        return out_df, None, csv_path, json_path, "<div style='color:#6b7280'>No valid rows were found in this file.</div>"
 
     labels = list(label_counts.keys())
     values = [label_counts[k] for k in labels]
-    fig, ax = plt.subplots(figsize=(6.5, 3.5))
+    fig, ax = plt.subplots(1, 2, figsize=(10.0, 3.8))
     colors = [EMOTION_COLORS.get(lbl.lower(), "#6b7280") for lbl in labels]
-    ax.bar(labels, values, color=colors, alpha=0.9)
-    ax.set_title("Batch Emotion Distribution")
-    ax.set_ylabel("Count")
-    ax.tick_params(axis="x", rotation=30)
+    ax[0].bar(labels, values, color=colors, alpha=0.9)
+    ax[0].set_title("Batch Emotion Distribution")
+    ax[0].set_ylabel("Count")
+    ax[0].tick_params(axis="x", rotation=30)
+    ax[0].grid(axis="y", alpha=0.2, linestyle="--")
+    conf_vals = out_df["confidence_%"].astype(float).to_numpy()
+    ax[1].hist(conf_vals, bins=[0, 20, 40, 60, 80, 100], color="#2563eb", alpha=0.85, edgecolor="#ffffff")
+    ax[1].set_title("Confidence Distribution")
+    ax[1].set_xlabel("Confidence (%)")
+    ax[1].set_ylabel("Rows")
+    ax[1].set_xlim(0, 100)
+    ax[1].grid(axis="y", alpha=0.2, linestyle="--")
     fig.tight_layout()
+
+    avg_ms = float(np.mean(timings_ms)) if timings_ms else 0.0
+    top_label = max(label_counts.items(), key=lambda kv: kv[1])[0]
+    summary_html = (
+        "<div class='result-card'>"
+        "<div class='result-title'>Batch Summary</div>"
+        f"<div style='font-size:14px;color:#334155'>Rows analyzed: <b>{len(out_df)}</b></div>"
+        f"<div style='font-size:14px;color:#334155'>Average inference time: <b>{avg_ms:.1f} ms/text</b></div>"
+        f"<div style='font-size:14px;color:#334155'>Most frequent emotion: "
+        f"<b style='color:{EMOTION_COLORS.get(top_label.lower(), '#111827')}'>{top_label.title()}</b></div>"
+        "</div>"
+    )
+
     csv_path, json_path = write_batch_exports(out_df)
-    return out_df, fig, csv_path, json_path
+    return out_df, fig, csv_path, json_path, summary_html
+
+
+GOEMOTIONS_28 = [
+    "admiration", "amusement", "anger", "annoyance", "approval", "caring", "confusion",
+    "curiosity", "desire", "disappointment", "disapproval", "disgust", "embarrassment",
+    "excitement", "fear", "gratitude", "grief", "joy", "love", "nervousness",
+    "optimism", "pride", "realization", "relief", "remorse", "sadness", "surprise",
+    "neutral",
+]
+
+GO_TO_7 = {
+    "admiration": "joy",
+    "amusement": "joy",
+    "anger": "anger",
+    "annoyance": "anger",
+    "approval": "joy",
+    "caring": "joy",
+    "confusion": "neutral",
+    "curiosity": "neutral",
+    "desire": "joy",
+    "disappointment": "sadness",
+    "disapproval": "anger",
+    "disgust": "disgust",
+    "embarrassment": "sadness",
+    "excitement": "joy",
+    "fear": "fear",
+    "gratitude": "joy",
+    "grief": "sadness",
+    "joy": "joy",
+    "love": "joy",
+    "nervousness": "fear",
+    "optimism": "joy",
+    "pride": "joy",
+    "realization": "neutral",
+    "relief": "joy",
+    "remorse": "sadness",
+    "sadness": "sadness",
+    "surprise": "surprise",
+    "neutral": "neutral",
+}
+
+
+def parse_label_ids(value):
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = ast.literal_eval(value)
+            return parsed if isinstance(parsed, list) else []
+        except Exception:
+            return []
+    return []
+
+
+def pick_coarse_label(label_ids):
+    mapped = []
+    for idx in label_ids:
+        if not isinstance(idx, (int, np.integer)):
+            continue
+        if idx < 0 or idx >= len(GOEMOTIONS_28):
+            continue
+        coarse = GO_TO_7.get(GOEMOTIONS_28[int(idx)])
+        if coarse and coarse not in mapped:
+            mapped.append(coarse)
+    if not mapped:
+        return None
+    if len(mapped) == 1:
+        return mapped[0]
+    mapped_wo_neutral = [m for m in mapped if m != "neutral"]
+    if len(mapped_wo_neutral) == 1:
+        return mapped_wo_neutral[0]
+    priority = ["anger", "disgust", "fear", "sadness", "surprise", "joy", "neutral"]
+    for p in priority:
+        if p in mapped:
+            return p
+    return mapped[0]
+
+
+def compute_core_metrics_df():
+    cache_path = ROOT / "core_classification_metrics.json"
+    if cache_path.exists():
+        try:
+            payload = json.loads(cache_path.read_text(encoding="utf-8"))
+            return pd.DataFrame(payload)
+        except Exception:
+            pass
+
+    if INIT_ERROR or model is None or tokenizer is None or label_encoder is None:
+        return pd.DataFrame(
+            [{"Metric": "Error", "Value": "Model initialization failed; metrics unavailable"}]
+        )
+
+    test_path = ROOT / "data_test.csv"
+    if not test_path.exists():
+        return pd.DataFrame([{"Metric": "Error", "Value": "data_test.csv not found"}])
+
+    try:
+        df = pd.read_csv(test_path)
+        if "text" not in df.columns or "labels" not in df.columns:
+            return pd.DataFrame([{"Metric": "Error", "Value": "data_test.csv missing required columns"}])
+
+        df["labels_parsed"] = df["labels"].apply(parse_label_ids)
+        df["coarse_label"] = df["labels_parsed"].apply(pick_coarse_label)
+        df = df[df["coarse_label"].notna()].copy()
+        df["text"] = df["text"].astype(str).map(normalize_social_text)
+        df = df[df["text"].str.len() > 0]
+        if df.empty:
+            return pd.DataFrame([{"Metric": "Error", "Value": "No valid evaluation samples"}])
+
+        y_true_names = df["coarse_label"].tolist()
+        texts = df["text"].tolist()
+        x = _build_model_inputs(texts, model, tokenizer, MAX_LEN)
+        probs = model.predict(x, batch_size=128, verbose=0)
+        if probs.ndim != 2:
+            return pd.DataFrame([{"Metric": "Error", "Value": "Unexpected prediction output shape"}])
+
+        adjusted_probs = []
+        for t, p in zip(texts, probs):
+            adjusted_probs.append(apply_emotion_cue_adjustment(t, p, label_encoder.classes_))
+        adjusted_probs = np.asarray(adjusted_probs, dtype=np.float32)
+
+        y_pred_idx = np.argmax(adjusted_probs, axis=1)
+        y_pred_names = label_encoder.inverse_transform(y_pred_idx).tolist()
+
+        y_true = np.asarray(y_true_names, dtype=object)
+        y_pred = np.asarray(y_pred_names, dtype=object)
+
+        acc = float(accuracy_score(y_true, y_pred))
+        precision = float(precision_score(y_true, y_pred, average="weighted", zero_division=0))
+        recall = float(recall_score(y_true, y_pred, average="weighted", zero_division=0))
+        f1 = float(f1_score(y_true, y_pred, average="micro", zero_division=0))
+        macro_f1 = float(f1_score(y_true, y_pred, average="macro", zero_division=0))
+        weighted_f1 = float(f1_score(y_true, y_pred, average="weighted", zero_division=0))
+        micro_f1 = float(f1_score(y_true, y_pred, average="micro", zero_division=0))
+        support = int(y_true.shape[0])
+        num_classes = int(len(label_encoder.classes_))
+
+        metrics_df = pd.DataFrame(
+            [
+                {"Metric": "Accuracy", "Value": round(acc, 4)},
+                {"Metric": "Precision", "Value": round(precision, 4)},
+                {"Metric": "Recall", "Value": round(recall, 4)},
+                {"Metric": "F1-Score", "Value": round(f1, 4)},
+                {"Metric": "Macro F1", "Value": round(macro_f1, 4)},
+                {"Metric": "Weighted F1", "Value": round(weighted_f1, 4)},
+                {"Metric": "Micro F1", "Value": round(micro_f1, 4)},
+                {"Metric": "Support", "Value": support},
+                {"Metric": "Emotion Classes", "Value": num_classes},
+            ]
+        )
+        try:
+            cache_path.write_text(metrics_df.to_json(orient="records", indent=2), encoding="utf-8")
+        except Exception:
+            pass
+        return metrics_df
+    except Exception as exc:
+        return pd.DataFrame([{"Metric": "Error", "Value": f"Failed to compute metrics: {exc}"}])
+
+
+def compute_showcase_metrics_df():
+    core = compute_core_metrics_df()
+    if core is None or core.empty:
+        return pd.DataFrame([{"Metric": "Error", "Value": "No metrics available"}])
+    keep = {
+        "Accuracy",
+        "Precision",
+        "Recall",
+        "F1-Score",
+        "Weighted F1",
+        "Macro F1",
+        "Micro F1",
+        "Support",
+        "Emotion Classes",
+    }
+    if "Metric" not in core.columns:
+        return core
+    filtered = core[core["Metric"].astype(str).isin(keep)].copy()
+    if filtered.empty:
+        return core
+    ordered = [
+        "Accuracy",
+        "Precision",
+        "Recall",
+        "F1-Score",
+        "Weighted F1",
+        "Macro F1",
+        "Micro F1",
+        "Support",
+        "Emotion Classes",
+    ]
+    filtered["__order"] = filtered["Metric"].map({k: i for i, k in enumerate(ordered)})
+    filtered = filtered.sort_values("__order").drop(columns=["__order"])
+    return filtered.reset_index(drop=True)
+
+
+def metric_band(score: float):
+    if score >= 0.80:
+        return "EXCELLENT", "#16a34a", "⭐⭐⭐⭐"
+    if score >= 0.70:
+        return "GOOD", "#2563eb", "⭐⭐⭐"
+    if score >= 0.60:
+        return "ACCEPTABLE", "#ca8a04", "⭐⭐"
+    return "NEEDS IMPROVEMENT", "#dc2626", "⭐"
+
+
+def metric_bar(score: float, slots: int = 16) -> str:
+    s = max(0.0, min(1.0, float(score)))
+    n = int(round(s * slots))
+    return ("█" * n) + ("░" * (slots - n))
+
+
+def build_metrics_dashboard_html(metrics_df: pd.DataFrame) -> str:
+    if metrics_df is None or metrics_df.empty or "Metric" not in metrics_df.columns:
+        return "<div class='result-card'><b>Metrics unavailable.</b></div>"
+
+    value_map = {}
+    for _, row in metrics_df.iterrows():
+        try:
+            value_map[str(row["Metric"])] = float(row["Value"])
+        except Exception:
+            value_map[str(row["Metric"])] = row["Value"]
+
+    primary_keys = ["Accuracy", "Precision", "Recall"]
+    advanced_keys = ["F1-Score", "Weighted F1", "Macro F1", "Micro F1"]
+    info_keys = ["Support", "Emotion Classes"]
+
+    def render_line(k):
+        if k not in value_map:
+            return ""
+        v = value_map[k]
+        if not isinstance(v, float):
+            return f"<div><b>{k}:</b> {v}</div>"
+        band, color, stars = metric_band(v)
+        bar = metric_bar(v)
+        return (
+            "<div style='margin:4px 0;'>"
+            f"<b>{k}:</b> {v:.4f} ({v*100:.2f}%) "
+            f"<code style='color:{color};'>{bar}</code> "
+            f"<span style='color:{color};font-weight:700'>{band}</span> "
+            f"<span>{stars}</span>"
+            "</div>"
+        )
+
+    html_out = ["<div class='result-card'>"]
+    html_out.append("<div class='result-title'>CLASSIFICATION PERFORMANCE METRICS</div>")
+    html_out.append("<div><b>PRIMARY METRICS</b></div>")
+    for k in primary_keys:
+        html_out.append(render_line(k))
+    html_out.append("<div style='margin-top:8px;'><b>ADVANCED METRICS</b></div>")
+    for k in advanced_keys:
+        html_out.append(render_line(k))
+    html_out.append("<div style='margin-top:8px;'><b>DATASET INFORMATION</b></div>")
+    for k in info_keys:
+        html_out.append(render_line(k))
+    html_out.append(
+        "<div style='margin-top:10px;font-size:12px;color:#4b5563;'>"
+        "<b>Interpretation:</b> Precision shows correctness when predicting a class; "
+        "Recall shows coverage of true examples; F1 balances both, while Macro F1 highlights "
+        "minority-class performance."
+        "</div>"
+    )
+    html_out.append(
+        "<table style='margin-top:10px;width:100%;border-collapse:collapse;font-size:12px;'>"
+        "<tr style='background:#f8fafc;'><th style='text-align:left;border:1px solid #dbe3ea;padding:6px;'>Metric</th>"
+        "<th style='text-align:left;border:1px solid #dbe3ea;padding:6px;'>Your Score</th>"
+        "<th style='text-align:left;border:1px solid #dbe3ea;padding:6px;'>What It Means</th></tr>"
+        f"<tr><td style='border:1px solid #dbe3ea;padding:6px;'>Precision</td><td style='border:1px solid #dbe3ea;padding:6px;'>{value_map.get('Precision','N/A')}</td>"
+        "<td style='border:1px solid #dbe3ea;padding:6px;'>When model predicts an emotion, this is how often it is correct.</td></tr>"
+        f"<tr><td style='border:1px solid #dbe3ea;padding:6px;'>F1-Score</td><td style='border:1px solid #dbe3ea;padding:6px;'>{value_map.get('F1-Score','N/A')}</td>"
+        "<td style='border:1px solid #dbe3ea;padding:6px;'>Balance between precision and recall.</td></tr>"
+        f"<tr><td style='border:1px solid #dbe3ea;padding:6px;'>Weighted F1</td><td style='border:1px solid #dbe3ea;padding:6px;'>{value_map.get('Weighted F1','N/A')}</td>"
+        "<td style='border:1px solid #dbe3ea;padding:6px;'>F1 adjusted by class frequency under imbalance.</td></tr>"
+        "</table>"
+    )
+    html_out.append("</div>")
+    return "".join(html_out)
+
+
+def build_metrics_bar_plot(metrics_df: pd.DataFrame):
+    fig, ax = plt.subplots(figsize=(8.8, 3.8))
+    if metrics_df is None or metrics_df.empty or "Metric" not in metrics_df.columns:
+        ax.axis("off")
+        ax.text(0.5, 0.5, "Metrics unavailable.", ha="center", va="center")
+        fig.tight_layout()
+        return fig
+
+    metric_names = ["Accuracy", "Precision", "Recall", "F1-Score", "Weighted F1", "Macro F1", "Micro F1"]
+    rows = []
+    for name in metric_names:
+        m = metrics_df[metrics_df["Metric"] == name]
+        if m.empty:
+            continue
+        try:
+            rows.append((name, float(m.iloc[0]["Value"])))
+        except Exception:
+            continue
+
+    if not rows:
+        ax.axis("off")
+        ax.text(0.5, 0.5, "Numeric metrics unavailable.", ha="center", va="center")
+        fig.tight_layout()
+        return fig
+
+    names = [r[0] for r in rows]
+    vals = [r[1] for r in rows]
+    colors = []
+    for v in vals:
+        if v >= 0.80:
+            colors.append("#16a34a")
+        elif v >= 0.70:
+            colors.append("#2563eb")
+        elif v >= 0.60:
+            colors.append("#ca8a04")
+        else:
+            colors.append("#dc2626")
+
+    bars = ax.barh(names, vals, color=colors, alpha=0.95)
+    ax.set_xlim(0.0, 1.0)
+    ax.set_xlabel("Score")
+    ax.set_title("Classification Metrics Performance")
+    ax.grid(axis="x", alpha=0.2)
+    for b, v in zip(bars, vals):
+        ax.text(min(v + 0.01, 0.98), b.get_y() + b.get_height() / 2, f"{v:.2%}", va="center", fontsize=9, fontweight="bold")
+    fig.tight_layout()
+    return fig
 
 
 # =====================================================
@@ -1206,11 +1631,13 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
         with gr.Row():
             predict_btn = gr.Button("Submit")
             clear_btn = gr.Button("Clear")
+            copy_btn = gr.Button("Copy Result")
         with gr.Row():
             with gr.Column(scale=1):
                 pred_html = gr.HTML(label="Primary Emotion")
                 rationale_html = gr.HTML(label="Prediction Rationale")
                 alternatives_html = gr.HTML(label="Alternative Emotions")
+                copy_summary_text = gr.Textbox(label="Copy-Ready Summary", interactive=False)
             with gr.Column(scale=1):
                 conf_plot = gr.Plot(label="Confidence Chart")
                 prob_table = gr.Dataframe(
@@ -1231,7 +1658,7 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
         predict_btn.click(
             fn=predict_full,
             inputs=[text_input],
-            outputs=[pred_html, rationale_html, alternatives_html, heatmap_html, attn_table, prob_table, conf_plot],
+            outputs=[pred_html, rationale_html, alternatives_html, heatmap_html, attn_table, prob_table, conf_plot, copy_summary_text],
         )
         text_input.change(
             fn=input_feedback,
@@ -1249,8 +1676,20 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
             outputs=[text_input],
         )
         clear_btn.click(
-            lambda: ("", "", "", "", pd.DataFrame(columns=["token", "attention_weight"]), pd.DataFrame(columns=["emotion", "probability_%"]), None, input_feedback("")),
-            outputs=[pred_html, rationale_html, alternatives_html, heatmap_html, attn_table, prob_table, conf_plot, input_stats_html],
+            lambda: ("", "", "", "", pd.DataFrame(columns=["token", "attention_weight"]), pd.DataFrame(columns=["emotion", "probability_%"]), None, "", input_feedback("")),
+            outputs=[pred_html, rationale_html, alternatives_html, heatmap_html, attn_table, prob_table, conf_plot, copy_summary_text, input_stats_html],
+        )
+        copy_btn.click(
+            fn=lambda _: None,
+            inputs=[copy_summary_text],
+            outputs=[],
+            js="""(summary) => {
+                if (!summary || !summary.trim()) {
+                    alert("No prediction to copy yet.");
+                    return;
+                }
+                navigator.clipboard.writeText(summary);
+            }""",
         )
 
     with gr.Tab("Batch Analysis"):
@@ -1261,21 +1700,38 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
             file_types=[".csv", ".txt"],
         )
         batch_btn = gr.Button("Run Batch Analysis")
+        batch_summary = gr.HTML(label="Batch Summary")
         batch_table = gr.Dataframe(label="Batch Predictions", interactive=False)
-        batch_plot = gr.Plot(label="Batch Distribution")
+        batch_plot = gr.Plot(label="Batch Comparison Charts")
         batch_csv_file = gr.File(label="Batch CSV Export", interactive=False)
         batch_json_file = gr.File(label="Batch JSON Export", interactive=False)
         batch_btn.click(
             fn=analyze_batch,
             inputs=[batch_file],
-            outputs=[batch_table, batch_plot, batch_csv_file, batch_json_file],
+            outputs=[batch_table, batch_plot, batch_csv_file, batch_json_file, batch_summary],
         )
+
+    showcase_metrics_df = compute_showcase_metrics_df()
 
     gr.Markdown("### Training Performance")
     train_curves_plot = gr.Plot(
         label="Model Accuracy and Model Loss",
         value=build_training_curves_plot(),
     )
+    gr.HTML(
+        value=build_metrics_dashboard_html(showcase_metrics_df),
+        label="Classification Performance Dashboard",
+    )
+    gr.Plot(
+        label="Color-Coded Metrics Comparison",
+        value=build_metrics_bar_plot(showcase_metrics_df),
+    )
+    gr.Dataframe(
+        value=showcase_metrics_df,
+        label="Showcase Classification Metrics",
+        interactive=False,
+    )
 
 if __name__ == "__main__":
     demo.launch(ssr_mode=False)
+
