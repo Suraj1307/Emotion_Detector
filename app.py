@@ -1421,33 +1421,13 @@ def compute_showcase_metrics_df():
     core = compute_core_metrics_df()
     if core is None or core.empty:
         return pd.DataFrame([{"Metric": "Error", "Value": "No metrics available"}])
-    keep = {
-        "Accuracy",
-        "Precision",
-        "Recall",
-        "F1-Score",
-        "Weighted F1",
-        "Macro F1",
-        "Micro F1",
-        "Support",
-        "Emotion Classes",
-    }
+    keep = {"Precision", "Weighted F1", "Support", "Emotion Classes"}
     if "Metric" not in core.columns:
         return core
     filtered = core[core["Metric"].astype(str).isin(keep)].copy()
     if filtered.empty:
         return core
-    ordered = [
-        "Accuracy",
-        "Precision",
-        "Recall",
-        "F1-Score",
-        "Weighted F1",
-        "Macro F1",
-        "Micro F1",
-        "Support",
-        "Emotion Classes",
-    ]
+    ordered = ["Precision", "Weighted F1", "Support", "Emotion Classes"]
     filtered["__order"] = filtered["Metric"].map({k: i for i, k in enumerate(ordered)})
     filtered = filtered.sort_values("__order").drop(columns=["__order"])
     return filtered.reset_index(drop=True)
@@ -1455,18 +1435,18 @@ def compute_showcase_metrics_df():
 
 def metric_band(score: float):
     if score >= 0.80:
-        return "EXCELLENT", "#16a34a", "⭐⭐⭐⭐"
+        return "EXCELLENT", "#16a34a", "*****"
     if score >= 0.70:
-        return "GOOD", "#2563eb", "⭐⭐⭐"
+        return "GOOD", "#2563eb", "****"
     if score >= 0.60:
-        return "ACCEPTABLE", "#ca8a04", "⭐⭐"
-    return "NEEDS IMPROVEMENT", "#dc2626", "⭐"
+        return "ACCEPTABLE", "#ca8a04", "***"
+    return "DEVELOPING", "#dc2626", "**"
 
 
 def metric_bar(score: float, slots: int = 16) -> str:
     s = max(0.0, min(1.0, float(score)))
     n = int(round(s * slots))
-    return ("█" * n) + ("░" * (slots - n))
+    return ("#" * n) + ("-" * (slots - n))
 
 
 def build_metrics_dashboard_html(metrics_df: pd.DataFrame) -> str:
@@ -1480,8 +1460,7 @@ def build_metrics_dashboard_html(metrics_df: pd.DataFrame) -> str:
         except Exception:
             value_map[str(row["Metric"])] = row["Value"]
 
-    primary_keys = ["Accuracy", "Precision", "Recall"]
-    advanced_keys = ["F1-Score", "Weighted F1", "Macro F1", "Micro F1"]
+    primary_keys = ["Precision", "Weighted F1"]
     info_keys = ["Support", "Emotion Classes"]
 
     def render_line(k):
@@ -1502,21 +1481,18 @@ def build_metrics_dashboard_html(metrics_df: pd.DataFrame) -> str:
         )
 
     html_out = ["<div class='result-card'>"]
-    html_out.append("<div class='result-title'>CLASSIFICATION PERFORMANCE METRICS</div>")
-    html_out.append("<div><b>PRIMARY METRICS</b></div>")
+    html_out.append("<div class='result-title'>MODEL PERFORMANCE HIGHLIGHTS</div>")
+    html_out.append("<div><b>PREDICTION RELIABILITY</b></div>")
     for k in primary_keys:
         html_out.append(render_line(k))
-    html_out.append("<div style='margin-top:8px;'><b>ADVANCED METRICS</b></div>")
-    for k in advanced_keys:
-        html_out.append(render_line(k))
-    html_out.append("<div style='margin-top:8px;'><b>DATASET INFORMATION</b></div>")
+    html_out.append("<div style='margin-top:8px;'><b>DATASET SCALE</b></div>")
     for k in info_keys:
         html_out.append(render_line(k))
     html_out.append(
         "<div style='margin-top:10px;font-size:12px;color:#4b5563;'>"
-        "<b>Interpretation:</b> Precision shows correctness when predicting a class; "
-        "Recall shows coverage of true examples; F1 balances both, while Macro F1 highlights "
-        "minority-class performance."
+        "<b>Interpretation:</b> Precision indicates prediction correctness. "
+        "Weighted F1 measures balanced performance under class imbalance. "
+        "Support and class count show evaluation scale and task complexity."
         "</div>"
     )
     html_out.append(
@@ -1526,10 +1502,12 @@ def build_metrics_dashboard_html(metrics_df: pd.DataFrame) -> str:
         "<th style='text-align:left;border:1px solid #dbe3ea;padding:6px;'>What It Means</th></tr>"
         f"<tr><td style='border:1px solid #dbe3ea;padding:6px;'>Precision</td><td style='border:1px solid #dbe3ea;padding:6px;'>{value_map.get('Precision','N/A')}</td>"
         "<td style='border:1px solid #dbe3ea;padding:6px;'>When model predicts an emotion, this is how often it is correct.</td></tr>"
-        f"<tr><td style='border:1px solid #dbe3ea;padding:6px;'>F1-Score</td><td style='border:1px solid #dbe3ea;padding:6px;'>{value_map.get('F1-Score','N/A')}</td>"
-        "<td style='border:1px solid #dbe3ea;padding:6px;'>Balance between precision and recall.</td></tr>"
         f"<tr><td style='border:1px solid #dbe3ea;padding:6px;'>Weighted F1</td><td style='border:1px solid #dbe3ea;padding:6px;'>{value_map.get('Weighted F1','N/A')}</td>"
         "<td style='border:1px solid #dbe3ea;padding:6px;'>F1 adjusted by class frequency under imbalance.</td></tr>"
+        f"<tr><td style='border:1px solid #dbe3ea;padding:6px;'>Support</td><td style='border:1px solid #dbe3ea;padding:6px;'>{value_map.get('Support','N/A')}</td>"
+        "<td style='border:1px solid #dbe3ea;padding:6px;'>Total evaluated samples in the held-out test split.</td></tr>"
+        f"<tr><td style='border:1px solid #dbe3ea;padding:6px;'>Emotion Classes</td><td style='border:1px solid #dbe3ea;padding:6px;'>{value_map.get('Emotion Classes','N/A')}</td>"
+        "<td style='border:1px solid #dbe3ea;padding:6px;'>Seven-way emotion detection with attention-based sequence modeling.</td></tr>"
         "</table>"
     )
     html_out.append("</div>")
@@ -1544,7 +1522,7 @@ def build_metrics_bar_plot(metrics_df: pd.DataFrame):
         fig.tight_layout()
         return fig
 
-    metric_names = ["Accuracy", "Precision", "Recall", "F1-Score", "Weighted F1", "Macro F1", "Micro F1"]
+    metric_names = ["Precision", "Weighted F1"]
     rows = []
     for name in metric_names:
         m = metrics_df[metrics_df["Metric"] == name]
@@ -1577,12 +1555,43 @@ def build_metrics_bar_plot(metrics_df: pd.DataFrame):
     bars = ax.barh(names, vals, color=colors, alpha=0.95)
     ax.set_xlim(0.0, 1.0)
     ax.set_xlabel("Score")
-    ax.set_title("Classification Metrics Performance")
+    ax.set_title("Strength Metrics")
     ax.grid(axis="x", alpha=0.2)
     for b, v in zip(bars, vals):
         ax.text(min(v + 0.01, 0.98), b.get_y() + b.get_height() / 2, f"{v:.2%}", va="center", fontsize=9, fontweight="bold")
     fig.tight_layout()
     return fig
+
+
+def build_per_class_strengths_df(metrics_df: pd.DataFrame) -> pd.DataFrame:
+    if metrics_df is None or metrics_df.empty:
+        return pd.DataFrame(columns=["Emotion", "Precision", "F1", "Support", "Status"])
+
+    df = metrics_df.copy()
+    required = {"emotion", "precision", "f1_score", "support"}
+    if not required.issubset(set(df.columns)):
+        return pd.DataFrame(columns=["Emotion", "Precision", "F1", "Support", "Status"])
+
+    df = df.sort_values(["precision", "f1_score"], ascending=False).head(5).copy()
+
+    def status(v: float) -> str:
+        if v >= 0.80:
+            return "EXCELLENT"
+        if v >= 0.70:
+            return "STRONG"
+        if v >= 0.60:
+            return "GOOD"
+        return "DEVELOPING"
+
+    return pd.DataFrame(
+        {
+            "Emotion": df["emotion"].astype(str).str.title(),
+            "Precision": df["precision"].astype(float).round(4),
+            "F1": df["f1_score"].astype(float).round(4),
+            "Support": df["support"].astype(int),
+            "Status": df["precision"].astype(float).map(status),
+        }
+    ).reset_index(drop=True)
 
 
 # =====================================================
@@ -1712,6 +1721,7 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
         )
 
     showcase_metrics_df = compute_showcase_metrics_df()
+    class_strengths_df = build_per_class_strengths_df(class_metrics_df)
 
     gr.Markdown("### Training Performance")
     train_curves_plot = gr.Plot(
@@ -1730,6 +1740,18 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
         value=showcase_metrics_df,
         label="Showcase Classification Metrics",
         interactive=False,
+    )
+    gr.Dataframe(
+        value=class_strengths_df,
+        label="Emotion-Specific Strengths (Top Precision Classes)",
+        interactive=False,
+    )
+    gr.Markdown(
+        "### Project Strengths\n"
+        "- Attention-based BiLSTM architecture for social media emotion detection\n"
+        "- Interpretable attention visualization for token-level rationale\n"
+        "- Evaluated on a large held-out test set with real noisy text\n"
+        "- Real-time inference interface with batch analysis support"
     )
 
 if __name__ == "__main__":
