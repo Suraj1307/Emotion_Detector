@@ -130,19 +130,39 @@ EMOTION_ICONS = {
 }
 
 UI_CSS = """
-.gradio-container {
-  font-size: 15px;
-  background: #f8fafc;
-  color: #0f172a !important;
+:root {
+  --primary: #2563EB;
+  --success: #16A34A;
+  --teal: #0D9488;
+  --text-dark: #111827;
+  --text-medium: #374151;
+  --bg-light: #F9FAFB;
+  --card-bg: #FFFFFF;
+  --border: #E5E7EB;
 }
+
+body {
+  background-color: var(--bg-light);
+}
+
+.gradio-container {
+  background: var(--bg-light) !important;
+  color: var(--text-dark) !important;
+  font-size: 15px;
+}
+
 .gradio-container,
 .gradio-container * {
-  color: #0f172a !important;
+  color: var(--text-dark) !important;
 }
-.gradio-container .prose,
-.gradio-container .prose * {
-  color: #0f172a !important;
+
+h2, h3 {
+  color: var(--text-dark) !important;
+  font-weight: 700 !important;
+  margin-top: 24px !important;
+  margin-bottom: 12px !important;
 }
+
 .gradio-container .block,
 .gradio-container .panel,
 .gradio-container .gr-box,
@@ -155,113 +175,187 @@ UI_CSS = """
 .gradio-container .gr-radio,
 .gradio-container .gr-dropdown,
 .gradio-container .gr-textbox {
+  background: var(--card-bg) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
+}
+
+.gradio-container textarea,
+.gradio-container input,
+.gradio-container select,
+.gradio-container option {
   background: #ffffff !important;
-  border-color: #d1d5db !important;
+  color: var(--text-dark) !important;
+  border-color: var(--border) !important;
 }
-.gradio-container [role="tab"] {
-  background: #ffffff !important;
-  color: #334155 !important;
-}
-.gradio-container [role="tab"][aria-selected="true"] {
-  color: #0f172a !important;
-  border-bottom-color: #64748b !important;
-  font-weight: 700 !important;
-}
-.gradio-container [role="tab"]:hover,
-.gradio-container [role="tab"]:focus-visible {
-  background: #f1f5f9 !important;
-  color: #0f172a !important;
-}
-.gradio-container .gr-textbox textarea,
-.gradio-container .gr-textbox input,
-.gradio-container .gr-dropdown input,
-.gradio-container .gr-dropdown select {
-  background: #ffffff !important;
-  color: #0f172a !important;
-  border: 1px solid #cbd5e1 !important;
-}
+
 .gradio-container .gr-textbox textarea::placeholder,
 .gradio-container .gr-textbox input::placeholder {
-  color: #64748b !important;
+  color: var(--text-medium) !important;
   opacity: 1 !important;
 }
-.gradio-container .gr-button,
-.gradio-container button {
-  background: #e5e7eb !important;
-  color: #111827 !important;
-  border: 1px solid #cbd5e1 !important;
-}
-.gradio-container .gr-button:hover,
-.gradio-container button:hover,
-.gradio-container .gr-button:focus-visible,
-.gradio-container button:focus-visible {
-  background: #d1d5db !important;
-  color: #111827 !important;
-}
-.gradio-container .gr-accordion summary,
-.gradio-container .gr-accordion summary * {
-  background: #ffffff !important;
-  color: #0f172a !important;
-}
-.gradio-container .gr-accordion code {
-  background: #f1f5f9 !important;
-  color: #0f172a !important;
-}
-.gradio-container .gr-dataframe table,
-.gradio-container .gr-dataframe th,
-.gradio-container .gr-dataframe td,
-.gradio-container .gr-dataframe div {
-  background: #ffffff !important;
-  color: #0f172a !important;
-}
-.gradio-container .gr-dataframe th {
-  background: #f1f5f9 !important;
-}
+
 .gradio-container .label-wrap,
 .gradio-container .label-wrap *,
-.gradio-container .block-title {
+.gradio-container .block-title,
+.gradio-container .block-title *,
+.gradio-container .block-info,
+.gradio-container .block-info * {
+  color: var(--text-dark) !important;
   background: transparent !important;
-  color: #0f172a !important;
 }
+
+/* Buttons */
+.gradio-container button,
+.gradio-container .gr-button {
+  border-radius: 10px !important;
+  font-weight: 600 !important;
+  border: 1px solid var(--border) !important;
+  background: #E5E7EB !important;
+  color: var(--text-dark) !important;
+}
+
+.primary-btn button,
+.primary-btn .gr-button {
+  background: var(--primary) !important;
+  color: #ffffff !important;
+  border-color: var(--primary) !important;
+}
+
+.secondary-btn button,
+.secondary-btn .gr-button {
+  background: #E5E7EB !important;
+  color: var(--text-dark) !important;
+}
+
+/* Tabs */
+.gradio-container [role="tab"] {
+  background: #ffffff !important;
+  color: var(--text-medium) !important;
+  border: 1px solid transparent !important;
+}
+
+.gradio-container [role="tab"][aria-selected="true"] {
+  color: var(--primary) !important;
+  border-bottom: 2px solid var(--primary) !important;
+  font-weight: 700 !important;
+}
+
+/* DataFrame + HTML table styling */
+.gradio-container table,
+.gradio-container .gr-dataframe table,
+.gradio-container [data-testid="dataframe"] table,
+.gradio-container .handsontable .htCore {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  background: #ffffff !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+}
+
+.gradio-container thead,
+.gradio-container .gr-dataframe thead,
+.gradio-container .handsontable thead {
+  background: var(--primary) !important;
+}
+
+.gradio-container th,
+.gradio-container .gr-dataframe th,
+.gradio-container .handsontable th {
+  background: var(--primary) !important;
+  color: #ffffff !important;
+  padding: 12px !important;
+  font-weight: 700 !important;
+  text-align: left !important;
+  border: 1px solid #1E40AF !important;
+}
+
+.gradio-container td,
+.gradio-container .gr-dataframe td,
+.gradio-container .handsontable td {
+  background: #ffffff !important;
+  color: var(--text-dark) !important;
+  padding: 11px !important;
+  border: 1px solid var(--border) !important;
+  font-weight: 500 !important;
+}
+
+.gradio-container tbody tr:nth-child(even) td,
+.gradio-container .gr-dataframe tbody tr:nth-child(even) td,
+.gradio-container .handsontable tbody tr:nth-child(even) td {
+  background: #F3F4F6 !important;
+}
+
+.gradio-container tbody tr:hover td,
+.gradio-container .gr-dataframe tbody tr:hover td,
+.gradio-container .handsontable tbody tr:hover td {
+  background: #EFF6FF !important;
+}
+
+/* Metric cards */
 .result-card {
-  border: 1px solid #dbe3ea;
+  border: 1px solid var(--border);
+  border-left: 6px solid var(--teal);
   border-radius: 12px;
   padding: 14px;
   background: #ffffff;
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
-  animation: cardFade 220ms ease-out;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.04);
 }
-.result-title { font-size: 13px; color: #4b5563; margin-bottom: 6px; font-weight: 600; }
-.result-main { font-size: 32px; font-weight: 800; line-height: 1.15; }
-.result-meta { margin-top: 8px; color: #6b7280; font-size: 13px; }
+
+.result-title {
+  font-size: 13px;
+  color: var(--text-medium) !important;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.result-main {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--text-dark) !important;
+  line-height: 1.15;
+}
+
+.result-meta {
+  margin-top: 8px;
+  color: var(--text-medium) !important;
+  font-size: 13px;
+}
+
 .result-band {
   display: inline-block;
   padding: 2px 8px;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   margin-top: 8px;
-  background: #eef2f7;
-  color: #374151;
+  background: #ECFDF5;
+  color: var(--success) !important;
+  border: 1px solid #86EFAC;
 }
+
 .conf-meter {
   margin-top: 10px;
   border-radius: 10px;
-  border: 1px solid #dbe3ea;
+  border: 1px solid var(--border);
   padding: 8px;
-  background: #f8fafc;
+  background: #ffffff;
 }
+
 .conf-meter-track {
   height: 10px;
-  background: #e5e7eb;
+  background: #E5E7EB;
   border-radius: 999px;
   overflow: hidden;
 }
+
 .conf-meter-fill {
   height: 10px;
   border-radius: 999px;
   transition: width 320ms ease-out;
 }
+
 .alt-chip {
   display: inline-flex;
   align-items: center;
@@ -271,211 +365,16 @@ UI_CSS = """
   font-size: 12px;
   font-weight: 700;
 }
+
 .help-chip {
   display: inline-block;
   margin-left: 6px;
   padding: 1px 6px;
   border-radius: 999px;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  color: #1e40af;
+  background: #EFF6FF;
+  border: 1px solid #BFDBFE;
+  color: #1E40AF !important;
   font-size: 11px;
-}
-@keyframes cardFade {
-  from { opacity: 0; transform: translateY(4px) scale(0.995); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-/* Final readability overrides (high priority) */
-.gradio-container .label-wrap,
-.gradio-container .label-wrap *,
-.gradio-container .block-title {
-  color: #111827 !important;
-  background: transparent !important;
-}
-.gradio-container .gr-radio label,
-.gradio-container .gr-radio label *,
-.gradio-container .gr-checkbox label,
-.gradio-container .gr-checkbox label * {
-  color: #111827 !important;
-  background: #f3f4f6 !important;
-  border-color: #d1d5db !important;
-}
-.gradio-container .gr-radio input:checked + span,
-.gradio-container .gr-checkbox input:checked + span {
-  color: #111827 !important;
-}
-.gradio-container .gr-dropdown,
-.gradio-container .gr-dropdown *,
-.gradio-container .gr-dropdown input,
-.gradio-container .gr-dropdown .choices__inner,
-.gradio-container .gr-dropdown .choices__list,
-.gradio-container .gr-dropdown .choices__item {
-  color: #111827 !important;
-  background: #ffffff !important;
-  border-color: #d1d5db !important;
-}
-.gradio-container .gr-dataframe,
-.gradio-container .gr-dataframe *,
-.gradio-container .gr-dataframe table,
-.gradio-container .gr-dataframe thead,
-.gradio-container .gr-dataframe tbody,
-.gradio-container .gr-dataframe tr,
-.gradio-container .gr-dataframe th,
-.gradio-container .gr-dataframe td {
-  color: #111827 !important;
-  border-color: #d1d5db !important;
-}
-.gradio-container .gr-dataframe th {
-  background: #f3f4f6 !important;
-}
-.gradio-container .gr-dataframe td {
-  background: #ffffff !important;
-}
-.gradio-container code,
-.gradio-container pre {
-  color: #111827 !important;
-  background: #f3f4f6 !important;
-  border: 1px solid #e5e7eb !important;
-}
-/* DataFrame hard override for readability */
-.gradio-container [data-testid="dataframe"],
-.gradio-container [data-testid="dataframe"] * {
-  color: #111827 !important;
-}
-.gradio-container [data-testid="dataframe"] table,
-.gradio-container [data-testid="dataframe"] .table-wrap,
-.gradio-container [data-testid="dataframe"] .wrap,
-.gradio-container [data-testid="dataframe"] tbody,
-.gradio-container [data-testid="dataframe"] tr,
-.gradio-container [data-testid="dataframe"] td {
-  background: #ffffff !important;
-  color: #111827 !important;
-  border-color: #d1d5db !important;
-}
-.gradio-container [data-testid="dataframe"] th,
-.gradio-container [data-testid="dataframe"] thead tr,
-.gradio-container [data-testid="dataframe"] thead th,
-.gradio-container [data-testid="dataframe"] .header-row,
-.gradio-container [data-testid="dataframe"] .col_header {
-  background: #f3f4f6 !important;
-  color: #111827 !important;
-  border-color: #d1d5db !important;
-}
-.gradio-container [data-testid="dataframe"] tr:nth-child(even) td {
-  background: #f8fafc !important;
-}
-.gradio-container [data-testid="dataframe"] td:hover,
-.gradio-container [data-testid="dataframe"] tr:hover td {
-  background: #eef2ff !important;
-  color: #111827 !important;
-}
-/* Handsontable-specific overrides (Gradio DataFrame internals) */
-.gradio-container .handsontable,
-.gradio-container .handsontable .ht_master,
-.gradio-container .handsontable .wtHolder,
-.gradio-container .handsontable .wtHider,
-.gradio-container .handsontable .wtSpreader {
-  background: #ffffff !important;
-}
-.gradio-container .handsontable .htCore td,
-.gradio-container .handsontable .htCore th,
-.gradio-container .handsontable td,
-.gradio-container .handsontable th {
-  background: #ffffff !important;
-  color: #111827 !important;
-  border-color: #d1d5db !important;
-}
-.gradio-container .handsontable .htCore thead th,
-.gradio-container .handsontable .htCore th {
-  background: #f3f4f6 !important;
-  color: #111827 !important;
-  font-weight: 700 !important;
-}
-.gradio-container .handsontable .htCore tbody tr:nth-child(even) td {
-  background: #f8fafc !important;
-}
-.gradio-container .handsontable .htCore tbody tr:hover td,
-.gradio-container .handsontable .htCore td:hover {
-  background: #eef2ff !important;
-  color: #111827 !important;
-}
-
-/* Nuclear light-theme overrides: remove dark backgrounds everywhere */
-.gradio-container,
-.gradio-container .app-wrap,
-.gradio-container .section,
-.gradio-container .block,
-.gradio-container .panel,
-.gradio-container .gr-box,
-.gradio-container .gr-form,
-.gradio-container .gr-panel,
-.gradio-container .gr-accordion,
-.gradio-container .gr-dataframe,
-.gradio-container .gr-plot,
-.gradio-container .gr-file,
-.gradio-container .gr-radio,
-.gradio-container .gr-dropdown,
-.gradio-container .gr-textbox {
-  background: #ffffff !important;
-  color: #111827 !important;
-}
-.gradio-container textarea,
-.gradio-container input,
-.gradio-container select,
-.gradio-container option {
-  background: #ffffff !important;
-  color: #111827 !important;
-  border-color: #d1d5db !important;
-}
-.gradio-container button,
-.gradio-container .gr-button,
-.gradio-container [role="button"] {
-  background: #ffffff !important;
-  color: #111827 !important;
-  border: 1px solid #d1d5db !important;
-}
-.gradio-container [role="tab"],
-.gradio-container [role="tab"][aria-selected="true"],
-.gradio-container [role="tab"]:hover {
-  background: #ffffff !important;
-  color: #111827 !important;
-}
-.gradio-container .label-wrap,
-.gradio-container .label-wrap *,
-.gradio-container .block-title,
-.gradio-container .block-title *,
-.gradio-container .block-info,
-.gradio-container .block-info * {
-  background: #ffffff !important;
-  color: #111827 !important;
-}
-.gradio-container .gr-radio label,
-.gradio-container .gr-radio label *,
-.gradio-container .gr-checkbox label,
-.gradio-container .gr-checkbox label *,
-.gradio-container .gr-radio .wrap label,
-.gradio-container .gr-checkbox .wrap label {
-  background: #ffffff !important;
-  color: #111827 !important;
-  border-color: #d1d5db !important;
-}
-.gradio-container .gr-radio input + span,
-.gradio-container .gr-radio input:checked + span,
-.gradio-container .gr-checkbox input + span,
-.gradio-container .gr-checkbox input:checked + span {
-  background: #ffffff !important;
-  color: #111827 !important;
-}
-.gradio-container table,
-.gradio-container thead,
-.gradio-container tbody,
-.gradio-container tr,
-.gradio-container th,
-.gradio-container td {
-  background: #ffffff !important;
-  color: #111827 !important;
-  border-color: #d1d5db !important;
 }
 """
 
@@ -1881,7 +1780,7 @@ def build_per_class_strengths_df(metrics_df: pd.DataFrame) -> pd.DataFrame:
 
 SAMPLE_BATCH_FILE = ensure_sample_batch_file()
 
-with gr.Blocks(theme=gr.themes.Default(), css=UI_CSS) as demo:
+with gr.Blocks(theme=None, css=UI_CSS) as demo:
     gr.Markdown("## Emotion Classification in Social Media Using Attention-Based BiLSTM")
     with gr.Accordion("Model Diagnostics & Documentation", open=False):
         class_metrics_df = load_class_metrics_table()
@@ -1917,11 +1816,11 @@ with gr.Blocks(theme=gr.themes.Default(), css=UI_CSS) as demo:
             value=get_example_choices("Demo Mode")[0],
             label="Quick Examples",
         )
-        load_example_btn = gr.Button("Load Example")
+        load_example_btn = gr.Button("Load Example", elem_classes="secondary-btn")
         with gr.Row():
-            predict_btn = gr.Button("Submit")
-            clear_btn = gr.Button("Clear")
-            copy_btn = gr.Button("Copy Result")
+            predict_btn = gr.Button("Submit", elem_classes="primary-btn")
+            clear_btn = gr.Button("Clear", elem_classes="secondary-btn")
+            copy_btn = gr.Button("Copy Result", elem_classes="secondary-btn")
         with gr.Row():
             with gr.Column(scale=1):
                 pred_html = gr.HTML(label="Primary Emotion")
@@ -1989,7 +1888,7 @@ with gr.Blocks(theme=gr.themes.Default(), css=UI_CSS) as demo:
             label="Upload .csv (text column) or .txt (one text per line)",
             file_types=[".csv", ".txt"],
         )
-        batch_btn = gr.Button("Run Batch Analysis")
+        batch_btn = gr.Button("Run Batch Analysis", elem_classes="primary-btn")
         batch_summary = gr.HTML(label="Batch Summary")
         batch_table = gr.Dataframe(label="Batch Predictions", interactive=False)
         batch_plot = gr.Plot(label="Batch Comparison Charts")
