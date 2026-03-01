@@ -1421,13 +1421,13 @@ def compute_showcase_metrics_df():
     core = compute_core_metrics_df()
     if core is None or core.empty:
         return pd.DataFrame([{"Metric": "Error", "Value": "No metrics available"}])
-    keep = {"Precision", "Weighted F1", "Support", "Emotion Classes"}
+    keep = {"Accuracy", "Precision", "Weighted F1", "Support", "Emotion Classes"}
     if "Metric" not in core.columns:
         return core
     filtered = core[core["Metric"].astype(str).isin(keep)].copy()
     if filtered.empty:
         return core
-    ordered = ["Precision", "Weighted F1", "Support", "Emotion Classes"]
+    ordered = ["Accuracy", "Precision", "Weighted F1", "Support", "Emotion Classes"]
     filtered["__order"] = filtered["Metric"].map({k: i for i, k in enumerate(ordered)})
     filtered = filtered.sort_values("__order").drop(columns=["__order"])
     return filtered.reset_index(drop=True)
@@ -1721,7 +1721,6 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
         )
 
     showcase_metrics_df = compute_showcase_metrics_df()
-    class_strengths_df = build_per_class_strengths_df(class_metrics_df)
 
     gr.Markdown("### Training Performance")
     train_curves_plot = gr.Plot(
@@ -1731,11 +1730,6 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
     gr.Dataframe(
         value=showcase_metrics_df,
         label="Model Performance Highlights",
-        interactive=False,
-    )
-    gr.Dataframe(
-        value=class_strengths_df,
-        label="Emotion-Specific Strengths (Top Precision Classes)",
         interactive=False,
     )
     gr.Markdown(
