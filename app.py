@@ -1728,17 +1728,9 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
         label="Model Accuracy and Model Loss",
         value=build_training_curves_plot(),
     )
-    gr.HTML(
-        value=build_metrics_dashboard_html(showcase_metrics_df),
-        label="Classification Performance Dashboard",
-    )
-    gr.Plot(
-        label="Color-Coded Metrics Comparison",
-        value=build_metrics_bar_plot(showcase_metrics_df),
-    )
     gr.Dataframe(
         value=showcase_metrics_df,
-        label="Showcase Classification Metrics",
+        label="Model Performance Highlights",
         interactive=False,
     )
     gr.Dataframe(

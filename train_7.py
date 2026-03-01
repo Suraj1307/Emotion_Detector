@@ -20,23 +20,28 @@ VAL_CSV = PROJECT_DIR / "data_validation.csv"
 OUT_DIR = PROJECT_DIR / "emotion-model"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-MAX_LEN = int(os.getenv("MAX_LEN", "50"))
-VOCAB_SIZE = int(os.getenv("VOCAB_SIZE", "30000"))
-EMBED_DIM = int(os.getenv("EMBED_DIM", "100"))
-LSTM_UNITS = int(os.getenv("LSTM_UNITS", "64"))
-DENSE_UNITS = int(os.getenv("DENSE_UNITS", "64"))
-SPATIAL_DROPOUT = float(os.getenv("SPATIAL_DROPOUT", "0.1"))
-DROPOUT_RATE = float(os.getenv("DROPOUT_RATE", "0.3"))
-BATCH_SIZE = int(os.getenv("BATCH_SIZE", "64"))
-EPOCHS = int(os.getenv("EPOCHS", "12"))
+MAX_LEN = int(os.getenv("MAX_LEN", "64"))
+VOCAB_SIZE = int(os.getenv("VOCAB_SIZE", "50000"))
+EMBED_DIM = int(os.getenv("EMBED_DIM", "200"))
+LSTM_UNITS = int(os.getenv("LSTM_UNITS", "96"))
+DENSE_UNITS = int(os.getenv("DENSE_UNITS", "96"))
+SPATIAL_DROPOUT = float(os.getenv("SPATIAL_DROPOUT", "0.25"))
+DROPOUT_RATE = float(os.getenv("DROPOUT_RATE", "0.5"))
+RECURRENT_DROPOUT = float(os.getenv("RECURRENT_DROPOUT", "0.25"))
+LSTM_L2 = float(os.getenv("LSTM_L2", "3e-4"))
+BATCH_SIZE = int(os.getenv("BATCH_SIZE", "48"))
+EPOCHS = int(os.getenv("EPOCHS", "14"))
 SAMPLE_TRAIN = int(os.getenv("SAMPLE_TRAIN", "0"))
 SAMPLE_VAL = int(os.getenv("SAMPLE_VAL", "0"))
-USE_FOCAL_LOSS = os.getenv("USE_FOCAL_LOSS", "1") == "1"
+USE_FOCAL_LOSS = os.getenv("USE_FOCAL_LOSS", "0") == "1"
 FOCAL_GAMMA = float(os.getenv("FOCAL_GAMMA", "2.0"))
 OVERSAMPLE_MINORITY = os.getenv("OVERSAMPLE_MINORITY", "1") == "1"
 MINORITY_TARGET_RATIO = float(os.getenv("MINORITY_TARGET_RATIO", "0.30"))
-LEARNING_RATE = float(os.getenv("LEARNING_RATE", "8e-4"))
-LABEL_SMOOTHING = float(os.getenv("LABEL_SMOOTHING", "0.05"))
+LEARNING_RATE = float(os.getenv("LEARNING_RATE", "3e-4"))
+LABEL_SMOOTHING = float(os.getenv("LABEL_SMOOTHING", "0.04"))
+EARLY_STOP_PATIENCE = int(os.getenv("EARLY_STOP_PATIENCE", "3"))
+LR_PATIENCE = int(os.getenv("LR_PATIENCE", "1"))
+LR_MIN = float(os.getenv("LR_MIN", "5e-6"))
 DROP_AMBIGUOUS = os.getenv("DROP_AMBIGUOUS", "0") == "1"
 AUGMENT_MINORITY = os.getenv("AUGMENT_MINORITY", "1") == "1"
 MINORITY_AUG_MAX_PER_CLASS = int(os.getenv("MINORITY_AUG_MAX_PER_CLASS", "1800"))
@@ -233,7 +238,14 @@ def build_model(num_classes: int, vocab_size: int):
     )(inputs)
     x = tf.keras.layers.SpatialDropout1D(SPATIAL_DROPOUT)(x)
     x = tf.keras.layers.Bidirectional(
-        tf.keras.layers.LSTM(LSTM_UNITS, return_sequences=True),
+        tf.keras.layers.LSTM(
+            LSTM_UNITS,
+            return_sequences=True,
+            dropout=0.2,
+            recurrent_dropout=RECURRENT_DROPOUT,
+            kernel_regularizer=tf.keras.regularizers.l2(LSTM_L2),
+            recurrent_regularizer=tf.keras.regularizers.l2(LSTM_L2),
+        ),
         name="bilstm_layer",
     )(x)
     x = AttentionLayer(name="attention_layer")(x)
@@ -325,22 +337,23 @@ def main():
     callbacks = [
         tf.keras.callbacks.ModelCheckpoint(
             filepath=str(OUT_DIR / "best_model.keras"),
-            monitor="val_loss",
-            mode="min",
+            monitor="val_accuracy",
+            mode="max",
             save_best_only=True,
             save_weights_only=False,
             verbose=1,
         ),
         tf.keras.callbacks.EarlyStopping(
-            monitor="val_loss",
-            patience=4,
+            monitor="val_accuracy",
+            mode="max",
+            patience=EARLY_STOP_PATIENCE,
             restore_best_weights=True,
         ),
         tf.keras.callbacks.ReduceLROnPlateau(
             monitor="val_loss",
             factor=0.5,
-            patience=2,
-            min_lr=1e-5,
+            patience=LR_PATIENCE,
+            min_lr=LR_MIN,
             verbose=1,
         ),
     ]
