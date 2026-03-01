@@ -212,6 +212,41 @@ UI_CSS = """
 .gradio-container .gr-accordion summary * {
   color: #f8fafc !important;
 }
+.gradio-container .gr-accordion,
+.gradio-container .gr-accordion .prose,
+.gradio-container .gr-accordion .prose *,
+.gradio-container .gr-accordion p,
+.gradio-container .gr-accordion li,
+.gradio-container .gr-accordion h1,
+.gradio-container .gr-accordion h2,
+.gradio-container .gr-accordion h3,
+.gradio-container .gr-accordion h4,
+.gradio-container .gr-accordion label,
+.gradio-container .gr-accordion span {
+  color: #e2e8f0 !important;
+}
+.gradio-container .gr-accordion * {
+  color: #e2e8f0 !important;
+}
+.gradio-container .gr-accordion a {
+  color: #93c5fd !important;
+}
+.gradio-container .gr-accordion code {
+  color: #f8fafc !important;
+  background: #334155 !important;
+}
+.gradio-container .gr-accordion .gr-dataframe table,
+.gradio-container .gr-accordion .gr-dataframe th,
+.gradio-container .gr-accordion .gr-dataframe td,
+.gradio-container .gr-accordion .gr-dataframe div {
+  color: #e2e8f0 !important;
+}
+.gradio-container .gr-accordion .gr-dataframe th {
+  background: #1e293b !important;
+}
+.gradio-container .gr-accordion .gr-dataframe td {
+  background: #0f172a !important;
+}
 .result-card {
   border: 1px solid #dbe3ea;
   border-radius: 12px;
