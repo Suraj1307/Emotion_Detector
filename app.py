@@ -133,6 +133,55 @@ UI_CSS = """
 .gradio-container {
   font-size: 15px;
   background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+  color: #0f172a !important;
+}
+.gradio-container h1,
+.gradio-container h2,
+.gradio-container h3,
+.gradio-container h4,
+.gradio-container p,
+.gradio-container span,
+.gradio-container label {
+  color: #0f172a !important;
+}
+.gradio-container .prose,
+.gradio-container .prose * {
+  color: #0f172a !important;
+}
+.gradio-container button {
+  color: #ffffff !important;
+}
+.gradio-container [role="tab"] {
+  color: #1f2937 !important;
+}
+.gradio-container [role="tab"][aria-selected="true"] {
+  color: #1d4ed8 !important;
+  font-weight: 700 !important;
+}
+.gradio-container .gr-textbox textarea,
+.gradio-container .gr-textbox input,
+.gradio-container .gr-textbox label,
+.gradio-container .gr-dropdown label,
+.gradio-container .gr-radio label,
+.gradio-container .gr-dataframe label,
+.gradio-container .gr-plot label,
+.gradio-container .gr-file label {
+  color: #e2e8f0 !important;
+}
+.gradio-container .gr-textbox textarea,
+.gradio-container .gr-textbox input,
+.gradio-container .gr-dropdown input {
+  background: #334155 !important;
+  border: 1px solid #475569 !important;
+}
+.gradio-container .gr-textbox textarea::placeholder,
+.gradio-container .gr-textbox input::placeholder {
+  color: #cbd5e1 !important;
+  opacity: 1 !important;
+}
+.gradio-container .gr-accordion summary,
+.gradio-container .gr-accordion summary * {
+  color: #f8fafc !important;
 }
 .result-card {
   border: 1px solid #dbe3ea;
