@@ -338,6 +338,68 @@ UI_CSS = """
   background: #f3f4f6 !important;
   border: 1px solid #e5e7eb !important;
 }
+/* DataFrame hard override for readability */
+.gradio-container [data-testid="dataframe"],
+.gradio-container [data-testid="dataframe"] * {
+  color: #111827 !important;
+}
+.gradio-container [data-testid="dataframe"] table,
+.gradio-container [data-testid="dataframe"] .table-wrap,
+.gradio-container [data-testid="dataframe"] .wrap,
+.gradio-container [data-testid="dataframe"] tbody,
+.gradio-container [data-testid="dataframe"] tr,
+.gradio-container [data-testid="dataframe"] td {
+  background: #ffffff !important;
+  color: #111827 !important;
+  border-color: #d1d5db !important;
+}
+.gradio-container [data-testid="dataframe"] th,
+.gradio-container [data-testid="dataframe"] thead tr,
+.gradio-container [data-testid="dataframe"] thead th,
+.gradio-container [data-testid="dataframe"] .header-row,
+.gradio-container [data-testid="dataframe"] .col_header {
+  background: #f3f4f6 !important;
+  color: #111827 !important;
+  border-color: #d1d5db !important;
+}
+.gradio-container [data-testid="dataframe"] tr:nth-child(even) td {
+  background: #f8fafc !important;
+}
+.gradio-container [data-testid="dataframe"] td:hover,
+.gradio-container [data-testid="dataframe"] tr:hover td {
+  background: #eef2ff !important;
+  color: #111827 !important;
+}
+/* Handsontable-specific overrides (Gradio DataFrame internals) */
+.gradio-container .handsontable,
+.gradio-container .handsontable .ht_master,
+.gradio-container .handsontable .wtHolder,
+.gradio-container .handsontable .wtHider,
+.gradio-container .handsontable .wtSpreader {
+  background: #ffffff !important;
+}
+.gradio-container .handsontable .htCore td,
+.gradio-container .handsontable .htCore th,
+.gradio-container .handsontable td,
+.gradio-container .handsontable th {
+  background: #ffffff !important;
+  color: #111827 !important;
+  border-color: #d1d5db !important;
+}
+.gradio-container .handsontable .htCore thead th,
+.gradio-container .handsontable .htCore th {
+  background: #f3f4f6 !important;
+  color: #111827 !important;
+  font-weight: 700 !important;
+}
+.gradio-container .handsontable .htCore tbody tr:nth-child(even) td {
+  background: #f8fafc !important;
+}
+.gradio-container .handsontable .htCore tbody tr:hover td,
+.gradio-container .handsontable .htCore td:hover {
+  background: #eef2ff !important;
+  color: #111827 !important;
+}
 """
 
 os.environ["TF_DETERMINISTIC_OPS"] = "1"
