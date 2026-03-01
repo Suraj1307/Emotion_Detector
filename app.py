@@ -400,6 +400,83 @@ UI_CSS = """
   background: #eef2ff !important;
   color: #111827 !important;
 }
+
+/* Nuclear light-theme overrides: remove dark backgrounds everywhere */
+.gradio-container,
+.gradio-container .app-wrap,
+.gradio-container .section,
+.gradio-container .block,
+.gradio-container .panel,
+.gradio-container .gr-box,
+.gradio-container .gr-form,
+.gradio-container .gr-panel,
+.gradio-container .gr-accordion,
+.gradio-container .gr-dataframe,
+.gradio-container .gr-plot,
+.gradio-container .gr-file,
+.gradio-container .gr-radio,
+.gradio-container .gr-dropdown,
+.gradio-container .gr-textbox {
+  background: #ffffff !important;
+  color: #111827 !important;
+}
+.gradio-container textarea,
+.gradio-container input,
+.gradio-container select,
+.gradio-container option {
+  background: #ffffff !important;
+  color: #111827 !important;
+  border-color: #d1d5db !important;
+}
+.gradio-container button,
+.gradio-container .gr-button,
+.gradio-container [role="button"] {
+  background: #ffffff !important;
+  color: #111827 !important;
+  border: 1px solid #d1d5db !important;
+}
+.gradio-container [role="tab"],
+.gradio-container [role="tab"][aria-selected="true"],
+.gradio-container [role="tab"]:hover {
+  background: #ffffff !important;
+  color: #111827 !important;
+}
+.gradio-container .label-wrap,
+.gradio-container .label-wrap *,
+.gradio-container .block-title,
+.gradio-container .block-title *,
+.gradio-container .block-info,
+.gradio-container .block-info * {
+  background: #ffffff !important;
+  color: #111827 !important;
+}
+.gradio-container .gr-radio label,
+.gradio-container .gr-radio label *,
+.gradio-container .gr-checkbox label,
+.gradio-container .gr-checkbox label *,
+.gradio-container .gr-radio .wrap label,
+.gradio-container .gr-checkbox .wrap label {
+  background: #ffffff !important;
+  color: #111827 !important;
+  border-color: #d1d5db !important;
+}
+.gradio-container .gr-radio input + span,
+.gradio-container .gr-radio input:checked + span,
+.gradio-container .gr-checkbox input + span,
+.gradio-container .gr-checkbox input:checked + span {
+  background: #ffffff !important;
+  color: #111827 !important;
+}
+.gradio-container table,
+.gradio-container thead,
+.gradio-container tbody,
+.gradio-container tr,
+.gradio-container th,
+.gradio-container td {
+  background: #ffffff !important;
+  color: #111827 !important;
+  border-color: #d1d5db !important;
+}
 """
 
 os.environ["TF_DETERMINISTIC_OPS"] = "1"
