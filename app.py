@@ -132,120 +132,96 @@ EMOTION_ICONS = {
 UI_CSS = """
 .gradio-container {
   font-size: 15px;
-  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+  background: #f8fafc;
   color: #0f172a !important;
 }
-.gradio-container h1,
-.gradio-container h2,
-.gradio-container h3,
-.gradio-container h4,
-.gradio-container p,
-.gradio-container span,
-.gradio-container label {
+.gradio-container,
+.gradio-container * {
   color: #0f172a !important;
 }
 .gradio-container .prose,
 .gradio-container .prose * {
   color: #0f172a !important;
 }
-.gradio-container button {
-  color: #ffffff !important;
+.gradio-container .block,
+.gradio-container .panel,
+.gradio-container .gr-box,
+.gradio-container .gr-form,
+.gradio-container .gr-panel,
+.gradio-container .gr-accordion,
+.gradio-container .gr-dataframe,
+.gradio-container .gr-plot,
+.gradio-container .gr-file,
+.gradio-container .gr-radio,
+.gradio-container .gr-dropdown,
+.gradio-container .gr-textbox {
+  background: #ffffff !important;
+  border-color: #d1d5db !important;
 }
 .gradio-container [role="tab"] {
-  color: #1f2937 !important;
+  background: #ffffff !important;
+  color: #334155 !important;
 }
 .gradio-container [role="tab"][aria-selected="true"] {
-  color: #1d4ed8 !important;
+  color: #0f172a !important;
+  border-bottom-color: #64748b !important;
   font-weight: 700 !important;
 }
 .gradio-container [role="tab"]:hover,
 .gradio-container [role="tab"]:focus-visible {
+  background: #f1f5f9 !important;
   color: #0f172a !important;
-  background: #dbeafe !important;
 }
 .gradio-container .gr-textbox textarea,
 .gradio-container .gr-textbox input,
-.gradio-container .gr-textbox label,
-.gradio-container .gr-dropdown label,
-.gradio-container .gr-radio label,
-.gradio-container .gr-dataframe label,
-.gradio-container .gr-plot label,
-.gradio-container .gr-file label {
-  color: #e2e8f0 !important;
-}
-.gradio-container .gr-textbox textarea,
-.gradio-container .gr-textbox input,
-.gradio-container .gr-dropdown input {
-  background: #334155 !important;
-  border: 1px solid #475569 !important;
+.gradio-container .gr-dropdown input,
+.gradio-container .gr-dropdown select {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid #cbd5e1 !important;
 }
 .gradio-container .gr-textbox textarea::placeholder,
 .gradio-container .gr-textbox input::placeholder {
-  color: #cbd5e1 !important;
+  color: #64748b !important;
   opacity: 1 !important;
 }
 .gradio-container .gr-button,
 .gradio-container button {
-  color: #ffffff !important;
+  background: #e5e7eb !important;
+  color: #111827 !important;
+  border: 1px solid #cbd5e1 !important;
 }
 .gradio-container .gr-button:hover,
 .gradio-container button:hover,
 .gradio-container .gr-button:focus-visible,
 .gradio-container button:focus-visible {
-  color: #ffffff !important;
-  background: #1d4ed8 !important;
-}
-.gradio-container .gr-radio .wrap label:hover,
-.gradio-container .gr-checkbox .wrap label:hover {
-  color: #f8fafc !important;
-}
-.gradio-container .gr-dropdown .choices__item--selectable,
-.gradio-container .gr-dropdown .choices__item {
-  color: #0f172a !important;
-}
-.gradio-container .gr-dropdown .choices__item--selectable.is-highlighted,
-.gradio-container .gr-dropdown .choices__item.is-highlighted {
-  color: #0f172a !important;
-  background: #dbeafe !important;
+  background: #d1d5db !important;
+  color: #111827 !important;
 }
 .gradio-container .gr-accordion summary,
 .gradio-container .gr-accordion summary * {
-  color: #f8fafc !important;
-}
-.gradio-container .gr-accordion,
-.gradio-container .gr-accordion .prose,
-.gradio-container .gr-accordion .prose *,
-.gradio-container .gr-accordion p,
-.gradio-container .gr-accordion li,
-.gradio-container .gr-accordion h1,
-.gradio-container .gr-accordion h2,
-.gradio-container .gr-accordion h3,
-.gradio-container .gr-accordion h4,
-.gradio-container .gr-accordion label,
-.gradio-container .gr-accordion span {
-  color: #e2e8f0 !important;
-}
-.gradio-container .gr-accordion * {
-  color: #e2e8f0 !important;
-}
-.gradio-container .gr-accordion a {
-  color: #93c5fd !important;
+  background: #ffffff !important;
+  color: #0f172a !important;
 }
 .gradio-container .gr-accordion code {
-  color: #f8fafc !important;
-  background: #334155 !important;
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
 }
-.gradio-container .gr-accordion .gr-dataframe table,
-.gradio-container .gr-accordion .gr-dataframe th,
-.gradio-container .gr-accordion .gr-dataframe td,
-.gradio-container .gr-accordion .gr-dataframe div {
-  color: #e2e8f0 !important;
+.gradio-container .gr-dataframe table,
+.gradio-container .gr-dataframe th,
+.gradio-container .gr-dataframe td,
+.gradio-container .gr-dataframe div {
+  background: #ffffff !important;
+  color: #0f172a !important;
 }
-.gradio-container .gr-accordion .gr-dataframe th {
-  background: #1e293b !important;
+.gradio-container .gr-dataframe th {
+  background: #f1f5f9 !important;
 }
-.gradio-container .gr-accordion .gr-dataframe td {
-  background: #0f172a !important;
+.gradio-container .label-wrap,
+.gradio-container .label-wrap *,
+.gradio-container .block-title {
+  background: transparent !important;
+  color: #0f172a !important;
 }
 .result-card {
   border: 1px solid #dbe3ea;
@@ -1713,7 +1689,7 @@ def build_per_class_strengths_df(metrics_df: pd.DataFrame) -> pd.DataFrame:
 
 SAMPLE_BATCH_FILE = ensure_sample_batch_file()
 
-with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue"), css=UI_CSS) as demo:
+with gr.Blocks(theme=gr.themes.Default(), css=UI_CSS) as demo:
     gr.Markdown("## Emotion Classification in Social Media Using Attention-Based BiLSTM")
     with gr.Accordion("Model Diagnostics & Documentation", open=False):
         class_metrics_df = load_class_metrics_table()
