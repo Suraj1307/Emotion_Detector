@@ -285,6 +285,59 @@ UI_CSS = """
   from { opacity: 0; transform: translateY(4px) scale(0.995); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
+
+/* Final readability overrides (high priority) */
+.gradio-container .label-wrap,
+.gradio-container .label-wrap *,
+.gradio-container .block-title {
+  color: #111827 !important;
+  background: transparent !important;
+}
+.gradio-container .gr-radio label,
+.gradio-container .gr-radio label *,
+.gradio-container .gr-checkbox label,
+.gradio-container .gr-checkbox label * {
+  color: #111827 !important;
+  background: #f3f4f6 !important;
+  border-color: #d1d5db !important;
+}
+.gradio-container .gr-radio input:checked + span,
+.gradio-container .gr-checkbox input:checked + span {
+  color: #111827 !important;
+}
+.gradio-container .gr-dropdown,
+.gradio-container .gr-dropdown *,
+.gradio-container .gr-dropdown input,
+.gradio-container .gr-dropdown .choices__inner,
+.gradio-container .gr-dropdown .choices__list,
+.gradio-container .gr-dropdown .choices__item {
+  color: #111827 !important;
+  background: #ffffff !important;
+  border-color: #d1d5db !important;
+}
+.gradio-container .gr-dataframe,
+.gradio-container .gr-dataframe *,
+.gradio-container .gr-dataframe table,
+.gradio-container .gr-dataframe thead,
+.gradio-container .gr-dataframe tbody,
+.gradio-container .gr-dataframe tr,
+.gradio-container .gr-dataframe th,
+.gradio-container .gr-dataframe td {
+  color: #111827 !important;
+  border-color: #d1d5db !important;
+}
+.gradio-container .gr-dataframe th {
+  background: #f3f4f6 !important;
+}
+.gradio-container .gr-dataframe td {
+  background: #ffffff !important;
+}
+.gradio-container code,
+.gradio-container pre {
+  color: #111827 !important;
+  background: #f3f4f6 !important;
+  border: 1px solid #e5e7eb !important;
+}
 """
 
 os.environ["TF_DETERMINISTIC_OPS"] = "1"
