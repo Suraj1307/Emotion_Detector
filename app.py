@@ -158,6 +158,11 @@ UI_CSS = """
   color: #1d4ed8 !important;
   font-weight: 700 !important;
 }
+.gradio-container [role="tab"]:hover,
+.gradio-container [role="tab"]:focus-visible {
+  color: #0f172a !important;
+  background: #dbeafe !important;
+}
 .gradio-container .gr-textbox textarea,
 .gradio-container .gr-textbox input,
 .gradio-container .gr-textbox label,
@@ -178,6 +183,30 @@ UI_CSS = """
 .gradio-container .gr-textbox input::placeholder {
   color: #cbd5e1 !important;
   opacity: 1 !important;
+}
+.gradio-container .gr-button,
+.gradio-container button {
+  color: #ffffff !important;
+}
+.gradio-container .gr-button:hover,
+.gradio-container button:hover,
+.gradio-container .gr-button:focus-visible,
+.gradio-container button:focus-visible {
+  color: #ffffff !important;
+  background: #1d4ed8 !important;
+}
+.gradio-container .gr-radio .wrap label:hover,
+.gradio-container .gr-checkbox .wrap label:hover {
+  color: #f8fafc !important;
+}
+.gradio-container .gr-dropdown .choices__item--selectable,
+.gradio-container .gr-dropdown .choices__item {
+  color: #0f172a !important;
+}
+.gradio-container .gr-dropdown .choices__item--selectable.is-highlighted,
+.gradio-container .gr-dropdown .choices__item.is-highlighted {
+  color: #0f172a !important;
+  background: #dbeafe !important;
 }
 .gradio-container .gr-accordion summary,
 .gradio-container .gr-accordion summary * {
