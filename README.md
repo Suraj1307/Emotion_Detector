@@ -13,7 +13,7 @@ pinned: true
 
 # 💬 Emotion Classification in Social Media using Attention-Based BiLSTM
 
-> A production-ready deep learning system for detecting emotions in noisy social media text, enhanced with attention-based interpretability and an interactive UI.
+> A production-ready deep learning system for detecting emotions in noisy social media text with attention-based interpretability.
 
 ---
 
@@ -27,11 +27,11 @@ Social media text (tweets, chats, Reddit posts) is:
 
 Traditional NLP models struggle to capture subtle emotional signals.
 
-This project solves that using an **Attention-Based BiLSTM**, enabling:
+This project uses an **Attention-Based BiLSTM** to:
 
-* 🎯 Accurate emotion classification
-* 🔍 Word-level interpretability (attention)
-* ⚡ Real-time predictions via interactive UI
+* 🎯 Accurately classify emotions
+* 🔍 Highlight important words using attention
+* ⚡ Provide real-time predictions via UI
 
 ---
 
@@ -40,102 +40,54 @@ This project solves that using an **Attention-Based BiLSTM**, enabling:
 * ✅ Classifies text into **7 emotions**
   *(anger, disgust, fear, joy, neutral, sadness, surprise)*
 
-* 🔍 **Attention Visualization**
-  Highlights emotionally important words
+* 🔍 Attention visualization (word importance)
 
-* 📊 **Confidence Insights**
+* 📊 Confidence insights:
 
   * Probability distribution
-  * Confidence bands (High / Moderate / Low)
+  * Confidence bands
 
-* ⚡ **Fast Inference (~200ms)**
+* ⚡ Fast inference (~200ms)
 
 * 🧪 Supports:
 
   * Single prediction
   * Batch analysis
 
-* 🎨 Clean UI with charts & analytics
-
 ---
 
 ## 🖥️ Demo
 
-👉 **Live App (HuggingFace Space)**
-*Add your link here*
+👉 Add your HuggingFace Space link here
 
 ---
 
 ## 🏗️ System Architecture
 
-```text
-User Input
-   ↓
-Preprocessing (clean text, normalize)
-   ↓
-Tokenizer (Keras)
-   ↓
-Embedding Layer
-   ↓
-BiLSTM (Bidirectional)
-   ↓
-Attention Layer ⭐
-   ↓
-Dense + Softmax
-   ↓
-Emotion Prediction + Confidence
+```
+Input → Preprocessing → Tokenizer → Embedding → BiLSTM → Attention → Dense → Output
 ```
 
 ### 🔍 Why Attention?
 
-The attention mechanism:
-
-* focuses on emotionally relevant words
-* reduces noise impact
-* provides explainability
+* Focuses on emotionally relevant words
+* Reduces noise impact
+* Improves interpretability
 
 ---
 
 ## 📂 Project Structure
 
-```text
+```
 emotion-classification/
-│
-├── app/                        # 🚀 UI + Inference
-│   ├── app.py
-│   ├── templates/
-│   ├── static/
-│
-├── src/                        # 🧠 Core ML logic
-│   ├── model.py
-│   ├── preprocess.py
-│   ├── predict.py
-│   ├── predict_with_attention.py
-│   ├── utils.py
-│   ├── ekman_mapping.py
-│
-├── training/                   # 🏋️ Training pipeline
-│   ├── train.py
-│   ├── download_data.py
-│   ├── training_history.json
-│
-├── models/                     # 💾 Saved models
-│   ├── emotion_model.keras
-│   ├── tokenizer.pkl
-│   ├── label_encoder.pkl
-│
-├── data/                       # 📊 Dataset
-│   ├── raw/
-│   ├── processed/
-│   ├── data_train.csv
-│   ├── data_validation.csv
-│
-├── research/                   # 📄 Research artifacts
-├── notebooks/                  # 📓 Experiments
-├── deployment/                 # ⚙️ Deployment configs
-│
-├── requirements.txt
-├── runtime.txt
+├── app/
+├── src/
+├── training/
+├── models/
+├── data/
+├── research/
+├── notebooks/
+├── deployment/
 ├── README.md
 ```
 
@@ -143,40 +95,29 @@ emotion-classification/
 
 ## ⚙️ Training Pipeline
 
-* 📌 Dataset: Social media text
+* Dataset: Social media text
+* Labels: 7 emotions
 
-* 🏷️ Labels: 7 emotion classes
+### Preprocessing:
 
-* 🔄 Preprocessing:
+* URL removal
+* @user normalization
+* hashtag handling
 
-  * URL removal
-  * @user normalization
-  * hashtag handling
+### Model:
 
-* 🧮 Model:
-
-  * Embedding Layer
-  * BiLSTM
-  * Attention Layer
-  * Dense + Softmax
-
-* 🔤 Tokenization:
-
-  * Keras tokenizer
+* Embedding
+* BiLSTM
+* Attention
+* Dense + Softmax
 
 ---
 
 ## 📊 Sample Output
 
-* **Primary Emotion:** Joy 😊
+* **Emotion:** Joy 😊
 * **Confidence:** ~81.7%
 * **Inference Time:** ~227 ms
-
-Additional outputs:
-
-* Confidence band
-* Top attention tokens
-* Full probability distribution
 
 ---
 
@@ -187,22 +128,6 @@ Additional outputs:
 | Accuracy    | 0.5926 |
 | Precision   | 0.6261 |
 | Weighted F1 | 0.6032 |
-| Classes     | 7      |
-
----
-
-## 🔬 Research Alignment
-
-This project aligns with research in:
-
-* Attention-based sequence modeling
-* Emotion detection in noisy text
-* Explainable AI (XAI)
-
-Includes:
-
-* evaluation outputs
-* research report scaffold
 
 ---
 
@@ -210,17 +135,14 @@ Includes:
 
 * Python 3.10
 * TensorFlow / Keras
-* Gradio / Flask (UI)
+* Gradio
 * NumPy / Pandas
 
 ---
 
-## ⚡ Running Locally
+## ⚡ Run Locally
 
 ```bash
-git clone <your-repo>
-cd emotion-classification
-
 pip install -r requirements.txt
 python app/app.py
 ```
@@ -229,49 +151,26 @@ python app/app.py
 
 ## 🚀 Deployment
 
-Supports:
-
 * HuggingFace Spaces
 * Render / Docker
-
-Configs available in:
-
-```
-deployment/
-```
 
 ---
 
 ## 💡 Future Improvements
 
-* 🔥 Transformer models (BERT / RoBERTa)
-* 🌐 Multilingual emotion detection
-* 😊 Emoji-aware embeddings
-* 📱 Mobile-optimized UI
-* ⚡ Real-time streaming predictions
+* Transformer models (BERT / RoBERTa)
+* Multilingual support
+* Emoji-aware embeddings
 
 ---
 
-## 🤝 Author
+## 👨‍💻 Author
 
 **Suraj Kumar**
-
-* Full Stack + AI Developer
-* Passionate about building real-world AI systems
-
----
-
-## ⭐ Why This Project Stands Out
-
-* Combines **Deep Learning + Interpretability**
-* End-to-end system (training → deployment)
-* Real-world NLP use case
-* Clean architecture + UI
+Full Stack + AI Developer
 
 ---
 
 ## 📬 Feedback
 
-Open an issue or contribute to improve the project 🚀
-
----
+Feel free to open issues or contribute 🚀
