@@ -1,19 +1,6 @@
----
-
-title: "Emotion Classification in Social Media Using Attention-Based BiLSTM"
-emoji: "💬"
-colorFrom: blue
-colorTo: indigo
-sdk: gradio
-sdk_version: "5.34.0"
-python_version: "3.10"
-app_file: app/app.py
-pinned: true
-------------
-
 # 💬 Emotion Classification in Social Media using Attention-Based BiLSTM
 
-> A production-ready deep learning system for detecting emotions in noisy social media text with attention-based interpretability.
+> A production-ready deep learning system for detecting emotions in noisy social media text with attention-based interpretability and an interactive UI.
 
 ---
 
@@ -40,12 +27,13 @@ This project uses an **Attention-Based BiLSTM** to:
 * ✅ Classifies text into **7 emotions**
   *(anger, disgust, fear, joy, neutral, sadness, surprise)*
 
-* 🔍 Attention visualization (word importance)
+* 🔍 **Attention Visualization**
+  Highlights emotionally important words
 
-* 📊 Confidence insights:
+* 📊 **Confidence Insights**
 
   * Probability distribution
-  * Confidence bands
+  * Confidence bands (High / Moderate / Low)
 
 * ⚡ Fast inference (~200ms)
 
@@ -54,18 +42,34 @@ This project uses an **Attention-Based BiLSTM** to:
   * Single prediction
   * Batch analysis
 
+* 🎨 Clean UI with charts & analytics
+
 ---
 
 ## 🖥️ Demo
 
-👉 Add your HuggingFace Space link here
+👉 Add your HuggingFace Space / Live App link here
 
 ---
 
 ## 🏗️ System Architecture
 
-```
-Input → Preprocessing → Tokenizer → Embedding → BiLSTM → Attention → Dense → Output
+```text
+Input Text
+   ↓
+Preprocessing (clean text, normalize)
+   ↓
+Tokenizer (Keras)
+   ↓
+Embedding Layer
+   ↓
+BiLSTM (Bidirectional)
+   ↓
+Attention Layer ⭐
+   ↓
+Dense + Softmax
+   ↓
+Emotion Prediction + Confidence
 ```
 
 ### 🔍 Why Attention?
@@ -78,25 +82,27 @@ Input → Preprocessing → Tokenizer → Embedding → BiLSTM → Attention →
 
 ## 📂 Project Structure
 
-```
+```text
 emotion-classification/
-├── app/
-├── src/
-├── training/
-├── models/
-├── data/
-├── research/
-├── notebooks/
-├── deployment/
-├── README.md
+├── app/                        # UI + Inference
+├── src/                        # Core ML logic
+├── training/                   # Training pipeline
+├── models/                     # Saved models
+├── data/                       # Dataset
+├── research/                   # Research artifacts
+├── notebooks/                  # Experiments
+├── deployment/                 # Deployment configs
+├── requirements.txt
+├── runtime.txt
+└── README.md
 ```
 
 ---
 
 ## ⚙️ Training Pipeline
 
-* Dataset: Social media text
-* Labels: 7 emotions
+* 📌 Dataset: Social media text
+* 🏷️ Labels: 7 emotion classes
 
 ### Preprocessing:
 
@@ -106,18 +112,24 @@ emotion-classification/
 
 ### Model:
 
-* Embedding
+* Embedding Layer
 * BiLSTM
-* Attention
+* Attention Layer
 * Dense + Softmax
 
 ---
 
 ## 📊 Sample Output
 
-* **Emotion:** Joy 😊
+* **Primary Emotion:** Joy 😊
 * **Confidence:** ~81.7%
 * **Inference Time:** ~227 ms
+
+Additional outputs:
+
+* Confidence band
+* Top attention tokens
+* Full probability distribution
 
 ---
 
@@ -128,6 +140,7 @@ emotion-classification/
 | Accuracy    | 0.5926 |
 | Precision   | 0.6261 |
 | Weighted F1 | 0.6032 |
+| Classes     | 7      |
 
 ---
 
@@ -135,7 +148,7 @@ emotion-classification/
 
 * Python 3.10
 * TensorFlow / Keras
-* Gradio
+* Gradio / Flask
 * NumPy / Pandas
 
 ---
@@ -143,6 +156,9 @@ emotion-classification/
 ## ⚡ Run Locally
 
 ```bash
+git clone <your-repo>
+cd emotion-classification
+
 pip install -r requirements.txt
 python app/app.py
 ```
@@ -151,16 +167,26 @@ python app/app.py
 
 ## 🚀 Deployment
 
+Supports:
+
 * HuggingFace Spaces
 * Render / Docker
+
+Deployment configs available in:
+
+```
+deployment/
+```
 
 ---
 
 ## 💡 Future Improvements
 
-* Transformer models (BERT / RoBERTa)
-* Multilingual support
-* Emoji-aware embeddings
+* 🔥 Transformer models (BERT / RoBERTa)
+* 🌐 Multilingual emotion detection
+* 😊 Emoji-aware embeddings
+* 📱 Mobile-optimized UI
+* ⚡ Real-time streaming predictions
 
 ---
 
@@ -168,6 +194,15 @@ python app/app.py
 
 **Suraj Kumar**
 Full Stack + AI Developer
+
+---
+
+## ⭐ Why This Project Stands Out
+
+* Combines **Deep Learning + Interpretability**
+* End-to-end system (training → deployment)
+* Real-world NLP use case
+* Clean architecture + UI
 
 ---
 
