@@ -209,3 +209,5 @@ Full Stack + AI Developer
 ## 📬 Feedback
 
 Feel free to open issues or contribute 🚀
+
+This project is inspired by recent advances in attention-based neural networks for NLP, particularly their ability to improve interpretability in text classification tasks. The model can be explored via an interactive demo hosted on Hugging Face Spaces, enabling real-time emotion prediction and visualization. The dataset used for training is publicly available, ensuring transparency and reproducibility of results.
